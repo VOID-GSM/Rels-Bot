@@ -3,8 +3,8 @@ import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
-from client import fetch_open_lectures, fetch_all_lectures_basic
-from store import init_state_store, was_notified, mark_notified
+from api_client import fetch_open_lectures, fetch_all_lectures_basic
+from state_store import init_state_store, was_notified, mark_notified
 
 load_dotenv()
 
