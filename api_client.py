@@ -2,16 +2,21 @@ import json
 import os
 from datetime import datetime
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-LECTURES_API_URL = os.getenv("LECTURES_API_URL", "https://rels-alpha.vercel.app/api/lectures")
+LECTURES_API_URL = os.getenv(
+    "LECTURES_API_URL",
+    "https://rels-alpha.vercel.app/api/lectures/discord",
+)
 API_AUTHORIZATION = os.getenv("API_AUTHORIZATION", "")
 API_BEARER_TOKEN = os.getenv("API_BEARER_TOKEN", "")
 API_COOKIE = os.getenv("API_COOKIE", "")
+PAGE_SIZE = int(os.getenv("LECTURES_PAGE_SIZE", "100"))
 
 
 class ApiError(RuntimeError):
@@ -23,13 +28,21 @@ def _headers():
         "Accept": "application/json",
         "User-Agent": "rels-discord-bot/1.0",
     }
+
     if API_AUTHORIZATION:
         headers["Authorization"] = API_AUTHORIZATION
     elif API_BEARER_TOKEN:
         headers["Authorization"] = f"Bearer {API_BEARER_TOKEN}"
+
     if API_COOKIE:
         headers["Cookie"] = API_COOKIE
+
     return headers
+
+
+def _with_query(url, params):
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{urlencode(params)}"
 
 
 def _request_json(url):
@@ -49,20 +62,21 @@ def _request_json(url):
         raise ApiError(f"API 응답이 JSON이 아닙니다: {body[:300]}") from exc
 
 
-def _pick(payload):
+def _pick_lectures(payload):
     if isinstance(payload, list):
         return payload
     if not isinstance(payload, dict):
         return []
 
-    for key in ("lectures", "data", "content", "result", "items"):
+    for key in ("content", "lectures", "data", "items", "result"):
         value = payload.get(key)
         if isinstance(value, list):
             return value
         if isinstance(value, dict):
-            nested = _pick(value)
+            nested = _pick_lectures(value)
             if nested:
                 return nested
+
     return []
 
 
@@ -70,97 +84,88 @@ def _first(source, *keys, default=None):
     if not isinstance(source, dict):
         return default
     for key in keys:
-        if key in source and source[key] not in (None, ""):
-            return source[key]
+        value = source.get(key)
+        if value not in (None, ""):
+            return value
     return default
-
-
-def _nested(source, key, *nested_keys, default=None):
-    value = _first(source, key, default={})
-    if not isinstance(value, dict):
-        return default
-    return _first(value, *nested_keys, default=default)
 
 
 def _parse_datetime(value):
     if not value or not isinstance(value, str):
         return None
-    normalized = value.replace("Z", "+00:00")
     try:
-        return datetime.fromisoformat(normalized)
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
 
 
 def _date_part(value):
     parsed = _parse_datetime(value)
-    if parsed:
-        return parsed.date()
-    return value
+    return parsed.date() if parsed else value
 
 
 def _time_part(value):
     parsed = _parse_datetime(value)
-    if parsed:
-        return parsed.time()
-    return value
+    return parsed.time() if parsed else value
 
 
 def _normalize(raw):
-    lecture_date = _first(raw, "lecture_date", "lectureDate", "date", "startDate")
-    lecture_time = _first(raw, "lecture_time", "lectureTime", "time", "startTime")
-    starts_at = _first(raw, "startsAt", "startAt", "lectureAt", "createdAt")
-
-    enrolled_count = _first(
-        raw,
-        "enrolled_count",
-        "enrolledCount",
-        "applicantCount",
-        "applicationCount",
-        "participantCount",
-        "currentCount",
-        default=0,
-    )
+    lecture_date = _first(raw, "lectureDate", "lecture_date", "date")
+    lecture_time = _first(raw, "lectureTime", "lecture_time", "time")
+    starts_at = _first(raw, "startsAt", "startAt", "lectureAt")
+    capacity_by_grade = _first(raw, "capacityByGrade", "capacity_by_grade", default={}) or {}
+    total_capacity = _first(raw, "totalCapacity", "total_capacity", "capacity", default=0)
+    enrolled_count = _first(raw, "enrolledCount", "enrolled_count", "applicantCount", default=0)
 
     try:
         enrolled_count = int(enrolled_count or 0)
     except (TypeError, ValueError):
         enrolled_count = 0
 
+    if not total_capacity and isinstance(capacity_by_grade, dict):
+        total_capacity = sum(int(value or 0) for value in capacity_by_grade.values())
+
+    try:
+        total_capacity = int(total_capacity or 0)
+    except (TypeError, ValueError):
+        total_capacity = 0
+
     return {
-        "id": _first(raw, "id", "lectureId", "uuid", default=_first(raw, "title", "name", default="unknown")),
-        "title": _first(raw, "title", "name", "lectureTitle", default="제목 없음"),
-        "description": _first(raw, "description", "content", default=""),
-        "status": str(_first(raw, "status", "state", default="OPEN")).upper(),
-        "lecture_location": _first(raw, "lecture_location", "lectureLocation", "location", "place", default="미정"),
+        "id": _first(raw, "id", "lectureId", default=_first(raw, "title", default="unknown")),
+        "title": _first(raw, "title", default="제목 없음"),
+        "description": _first(raw, "description", default=""),
+        "status": str(_first(raw, "status", default="OPEN")).upper(),
+        "lecture_location": _first(raw, "lectureLocation", "lecture_location", "location", default="미정"),
         "lecture_date": _date_part(lecture_date or starts_at),
         "lecture_time": _time_part(lecture_time or starts_at),
-        "application_deadline": _first(
-            raw,
-            "application_deadline",
-            "applicationDeadline",
-            "deadline",
-            "dueDate",
-        ),
-        "total_capacity": _first(raw, "total_capacity", "totalCapacity", "capacity", "maxParticipants", default=0),
-        "creator_name": _first(
-            raw,
-            "creator_name",
-            "creatorName",
-            "speaker",
-            "speakerName",
-            "lecturer",
-            default=_nested(raw, "creator", "name", "nickname", default="미정"),
-        ),
+        "application_deadline": str(_first(raw, "applicationDeadline", "application_deadline", "deadline") or "").replace("T", " "),
+        "total_capacity": total_capacity,
+        "creator_name": _first(raw, "creatorName", "creator_name", "speakerName", "speaker", default="미정"),
+        "target": _format_target(capacity_by_grade),
         "enrolled_count": enrolled_count,
         "raw": raw,
     }
 
 
+def _format_target(capacity_by_grade):
+    if not isinstance(capacity_by_grade, dict) or not capacity_by_grade:
+        return "전체"
+
+    grades = sorted(str(grade) for grade, capacity in capacity_by_grade.items() if int(capacity or 0) > 0)
+    if not grades:
+        return "전체"
+    return ", ".join(f"{grade}학년" for grade in grades)
+
+
 def fetch_open_lectures():
-    payload = _request_json(LECTURES_API_URL)
-    lectures = [_normalize(item) for item in _pick(payload)]
-    return [lecture for lecture in lectures if lecture["status"] in {"OPEN", "CONFIRMED"}]
+    url = _with_query(LECTURES_API_URL, {"size": PAGE_SIZE})
+    payload = _request_json(url)
+    lectures = [_normalize(item) for item in _pick_lectures(payload)]
+    return [
+        lecture
+        for lecture in lectures
+        if lecture["status"] in {"OPEN", "CONFIRMED", "CONFIRM"}
+    ]
 
 
 def fetch_all_lectures_basic():
