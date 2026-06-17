@@ -129,7 +129,7 @@ def _normalize(raw):
         total_capacity = int(total_capacity or 0)
     except (TypeError, ValueError):
         total_capacity = 0
-        
+
     deadline = _first(raw, "applicationDeadline", "application_deadline", "deadline")
     if deadline and isinstance(deadline, str):
         deadline = deadline.replace("T", " ")
@@ -199,10 +199,6 @@ def fetch_enrollment_counts():
 
 # --- 디스코드 봇 컴포넌트(main.py 등)에서 메시지를 출력할 때 참고할 수 있는 빌더 가이드 함수 ---
 def get_embed_description_example(lecture):
-    """
-    !릴스 명령어 처리부나 알람 전송부에서 Embed description 혹은 필드를 구성할 때 
-    아래 형식을 참고하여 조립하시면 스크린샷과 같이 줄바꿈 공백이 반영됩니다.
-    """
     return (
         f"**연사자**: {lecture['creator_name']}\n\n"
         f"**일시**: {lecture['lecture_date']} {lecture['lecture_time']}\n\n"

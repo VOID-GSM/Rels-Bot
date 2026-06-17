@@ -130,18 +130,36 @@ def _normalize(raw):
     except (TypeError, ValueError):
         total_capacity = 0
 
+    # 1. 신청 마감 시간 문자열 가져오기 및 'T' 처리
+    deadline = _first(raw, "applicationDeadline", "application_deadline", "deadline")
+    if deadline and isinstance(deadline, str):
+        deadline = deadline.replace("T", " ")
+
+    # 2. 강연 고유 ID 추출 및 웹사이트 상세 링크 생성
+    lecture_id = _first(raw, "id", "lectureId", default="")
+    lecture_url = f"https://rels-alpha.vercel.app/lectures/{lecture_id}" if lecture_id else "https://rels-alpha.vercel.app"
+
+    # 3. 대상 학년 및 인원 문구 조건문 세팅
+    target_grades = _format_target(capacity_by_grade)
+    if target_grades == "전체":
+        target_info = f"전체 인원 ({total_capacity}명)"
+    else:
+        target_info = f"신청 가능한 학년: {target_grades} ({total_capacity}명)"
+
     return {
-        "id": _first(raw, "id", "lectureId", default=_first(raw, "title", default="unknown")),
+        "id": lecture_id if lecture_id else _first(raw, "title", default="unknown"),
         "title": _first(raw, "title", default="제목 없음"),
         "description": _first(raw, "description", default=""),
         "status": str(_first(raw, "status", default="OPEN")).upper(),
         "lecture_location": _first(raw, "lectureLocation", "lecture_location", "location", default="미정"),
         "lecture_date": _date_part(lecture_date or starts_at),
         "lecture_time": _time_part(lecture_time or starts_at),
-        "application_deadline": str(_first(raw, "applicationDeadline", "application_deadline", "deadline") or "").replace("T", " "),
+        "application_deadline": deadline,
         "total_capacity": total_capacity,
         "creator_name": _first(raw, "creatorName", "creator_name", "speakerName", "speaker", default="미정"),
-        "target": _format_target(capacity_by_grade),
+        "target": target_grades,
+        "target_info": target_info,
+        "lecture_url": lecture_url,
         "enrolled_count": enrolled_count,
         "raw": raw,
     }
@@ -180,3 +198,14 @@ def fetch_enrollment_counts():
         }
         for lecture in fetch_open_lectures()
     }
+
+
+# 이 함수가 최종 디스코드 임베드의 알맹이 양식을 조립합니다 (\n\n 줄바꿈 포함)
+def get_formatted_description(lecture):
+    return (
+        f"**연사자**: {lecture['creator_name']}\n\n"
+        f"**일시**: {lecture['lecture_date']} {lecture['lecture_time']}\n\n"
+        f"**마감**: {lecture['application_deadline']}\n\n"
+        f"**대상**: {lecture['target_info']}\n\n"
+        f"**바로가기**: [강연 상세 보기]({lecture['lecture_url']})"
+    )
