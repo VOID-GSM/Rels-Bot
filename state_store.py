@@ -34,6 +34,7 @@ def was_notified(lecture_id, notification_type):
             """,
             (str(lecture_id), notification_type),
         ).fetchone()
+
     return row is not None
 
 
