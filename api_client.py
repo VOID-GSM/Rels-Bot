@@ -104,7 +104,11 @@ def _format_target(capacity_by_grade):
         except (TypeError, ValueError):
             continue
  
-    grades.sort()
+    try:
+        grades.sort(key=int)
+    except ValueError:
+        grades.sort()
+ 
     return ", ".join(f"{grade}학년" for grade in grades) if grades else "전체"
  
  
@@ -120,7 +124,12 @@ def _normalize(raw):
         enrolled_count = 0
  
     if not total_capacity and isinstance(capacity_by_grade, dict):
-        total_capacity = sum(int(value or 0) for value in capacity_by_grade.values())
+        total_capacity = 0
+        for value in capacity_by_grade.values():
+            try:
+                total_capacity += int(value or 0)
+            except (TypeError, ValueError):
+                continue
  
     try:
         total_capacity = int(total_capacity or 0)
@@ -174,4 +183,3 @@ def fetch_enrollment_counts(lectures=None):
         }
         for lecture in lectures
     }
- 
