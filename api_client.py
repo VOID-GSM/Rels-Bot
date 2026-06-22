@@ -139,6 +139,7 @@ def _normalize(raw):
     lecture_date = _first(raw, "lectureDate", "lecture_date", "date")
     lecture_time = _first(raw, "lectureTime", "lecture_time", "time")
     starts_at = _first(raw, "startsAt", "startAt", "lectureAt")
+    
  
     parsed_starts_at = _parse_datetime(starts_at)
  
@@ -155,6 +156,7 @@ def _normalize(raw):
         "creator_name": _first(raw, "creatorName", "creator_name", "speakerName", "speaker", default="미정"),
         "target": _format_target(capacity_by_grade),
         "enrolled_count": enrolled_count,
+        "lecture_url": _first(raw, "lectureUrl", "lecture_url", "url", default=None)
     }
  
  

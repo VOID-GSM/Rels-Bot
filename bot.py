@@ -13,7 +13,7 @@ load_dotenv()
  
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
  
-GUILD_ID = int(os.getenv("GUILD_ID", "1447887618317619261"))
+GUILD_ID = int(os.getenv    ("GUILD_ID", "1447887618317619261"))
 NOTIFY_CHANNEL_ID = int(os.getenv("NOTIFY_CHANNEL_ID", "1490575679786455111"))
 STUDENT_ROLE_ID = int(os.getenv("STUDENT_ROLE_ID", "1490586180679368734"))
  
@@ -154,9 +154,6 @@ async def poll_api():
             counts = enroll_map.get(lecture_id, {"enrolled_count": 0})
             enrolled_count = int(counts["enrolled_count"] or 0)
  
-            # 먼저 DB에 "보냈다"고 점유(claim)한 뒤에만 실제로 전송한다.
-            # 이렇게 하면 전송 후 기록이 실패해서 다음 polling에서
-            # 같은 알림이 또 나가는 중복 전송 문제가 발생하지 않는다.
             if lecture["status"] == "OPEN" and claim_notification(lecture_id, "new", lecture["title"]):
                 await channel.send(
                     content=f"{role_mention} 새 릴스 강연이 등록됐어요!",
@@ -222,11 +219,12 @@ async def cmd_rels(ctx):
  
         for lecture in lectures:
             value = (
-                f"연사자: {lecture['creator_name']}\n"
-                f"강연 일시: {fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}\n"
-                f"장소: {lecture['lecture_location'] or '미정'}\n"
-                f"신청 마감: {fmt_deadline(lecture['application_deadline'])}\n"
-                f"대상자: {lecture.get('target') or '전체'}"
+                f"연사자: {lecture['creator_name']}\n\n"
+                f"강연 일시: {fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}\n\n"
+                f"장소: {lecture['lecture_location'] or '미정'}\n\n"
+                f"신청 마감: {fmt_deadline(lecture['application_deadline'])}\n\n"
+                f"대상자: {lecture.get('target') or '전체'}\n\n"
+                f"[강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else ""
             )
             embed.add_field(name=lecture["title"], value=value, inline=False)
  
