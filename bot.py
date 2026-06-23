@@ -209,32 +209,44 @@ async def before_poll():
 async def cmd_rels(ctx):
     try:
         lectures = fetch_all_lectures_basic()
- 
-        if not lectures:
+
+        now = datetime.now(timezone.utc)
+
+        def is_active(lecture):
+            deadline = lecture.get("application_deadline")
+            if not deadline:
+                return True
+            parsed = _parse_deadline(deadline)
+            if parsed is None:
+                return True
+            return parsed > now
+
+        active_lectures = [l for l in lectures if is_active(l)]
+
+        if not active_lectures:
             await ctx.send("현재 신청 가능한 릴스 강연이 없어요.")
             return
- 
+
         embed = discord.Embed(
             title="현재 신청 가능한 릴스 강연",
             color=0x5865F2,
             timestamp=datetime.now(timezone.utc),
         )
- 
-        for lecture in lectures:
+
+        for i, lecture in enumerate(active_lectures, start=1):
             value = (
-                f"연사자: {lecture['creator_name']}\n\n"
-                f"강연 일시: {fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}\n\n"
-                f"장소: {lecture['lecture_location'] or '미정'}\n\n"
-                f"신청 마감: {fmt_deadline(lecture['application_deadline'])}\n\n"
-                f"대상자: {lecture.get('target') or '전체'}"
+                f"👤 연사자: {lecture['creator_name']}\n"
+                f"📅 강연 일시: {fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}\n"
+                f"📍 장소: {lecture['lecture_location'] or '미정'}\n"
+                f"⏰ 신청 마감: {fmt_deadline(lecture['application_deadline'])}\n"
+                f"🎯 대상자: {lecture.get('target') or '전체'}"
+                + (f"\n🔗 [강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else "")
             )
-            if lecture.get('lecture_url'):
-                value += f"\n\n[강연 신청하기]({lecture['lecture_url']})"
-            embed.add_field(name=lecture["title"], value=value, inline=False)
- 
+            embed.add_field(name=f"── {i}. {lecture['title']} ──", value=value, inline=False)
+
         embed.set_footer(text="GSM 릴스 봇")
         await ctx.send(embed=embed)
- 
+
     except Exception as exc:
         await ctx.send(f"오류가 발생했어요: {exc}")
  
@@ -275,7 +287,6 @@ async def cmd_headcount(ctx):
  
     except Exception as exc:
         await ctx.send(f"오류가 발생했어요: {exc}")
- 
  
 @bot.command(name="도움말")
 async def cmd_help(ctx):
