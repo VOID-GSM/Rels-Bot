@@ -31,7 +31,7 @@ def _parse_deadline(value):
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     try:
-        text = str(value).replace(" ", "T")
+        text = str(value).upper().replace(" ", "T")
         dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
