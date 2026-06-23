@@ -211,8 +211,7 @@ async def cmd_rels(ctx):
     try:
         lectures = fetch_open_lectures()
 
-        VISIBLE_STATUSES = {"OPEN", "CONFIRMED", "CONFIRM"}
-        active_lectures = [l for l in lectures if l["status"] in VISIBLE_STATUSES]
+        active_lectures = lectures
 
         if not active_lectures:
             await ctx.send("현재 신청 가능한 릴스 강연이 없어요.")
