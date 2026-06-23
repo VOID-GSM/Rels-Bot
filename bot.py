@@ -160,7 +160,7 @@ async def poll_api():
  
             if lecture["status"] == "OPEN" and claim_notification(lecture_id, "new", lecture["title"]):
                 await channel.send(
-                    content=f"{role_mention} 새 릴스 강연이 등록됐어요!",
+                    content=f"{role_mention} 새 릴레이 스터디가 등록됐어요!",
                     embed=make_new_lecture_embed(lecture),
                 )
                 await asyncio.sleep(0.5)
@@ -169,7 +169,7 @@ async def poll_api():
                 lecture_id, "confirmed", lecture["title"]
             ):
                 await channel.send(
-                    content=f"{role_mention} 릴스 강연 개설이 확정됐어요!",
+                    content=f"{role_mention} 릴레이 스터디 개설이 확정됐어요!",
                     embed=make_confirmed_embed(lecture, enrolled_count),
                 )
                 await asyncio.sleep(0.5)
@@ -211,28 +211,47 @@ async def cmd_rels(ctx):
     try:
         lectures = fetch_open_lectures()
 
-        active_lectures = lectures
+        VISIBLE_STATUSES = {"OPEN", "CONFIRMED", "CONFIRM"}
+        now = datetime.now(timezone.utc)
+
+        def is_active(lecture):
+            if lecture["status"] not in VISIBLE_STATUSES:
+                return False
+            deadline = lecture.get("application_deadline")
+            if not deadline:
+                return True
+            try:
+                text = str(deadline).strip().replace(" ", "T")
+                text = text.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(text)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt > now
+            except Exception:
+                return True
+
+        active_lectures = [l for l in lectures if is_active(l)]
 
         if not active_lectures:
-            await ctx.send("현재 신청 가능한 릴스 강연이 없어요.")
+            await ctx.send("현재 신청 가능한 릴레이 스터디가 없어요.")
             return
 
         embed = discord.Embed(
-            title="현재 신청 가능한 릴스 강연",
+            title="현재 신청 가능한 릴레이 스터디",
             color=0x5865F2,
             timestamp=datetime.now(timezone.utc),
         )
 
         for i, lecture in enumerate(active_lectures, start=1):
-            status_tag = "✅ 개설 확정" if lecture["status"] in {"CONFIRMED", "CONFIRM"} else "⏳ 개설 미정"
+            status_tag = "개설 확정" if lecture["status"] in {"CONFIRMED", "CONFIRM"} else "개설 미정"
             value = (
                 f"{status_tag}\n"
-                f"👤 연사자: {lecture['creator_name']}\n"
-                f"📅 강연 일시: {fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}\n"
-                f"📍 장소: {lecture['lecture_location'] or '미정'}\n"
-                f"⏰ 신청 마감: {fmt_deadline(lecture['application_deadline'])}\n"
-                f"🎯 대상자: {lecture.get('target') or '전체'}"
-                + (f"\n🔗 [강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else "")
+                f"연사자: {lecture['creator_name']}\n\n"
+                f"강연 일시: {fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}\n\n"
+                f"장소: {lecture['lecture_location'] or '미정'}\n\n"
+                f"신청 마감: {fmt_deadline(lecture['application_deadline'])}\n\n"
+                f"대상자: {lecture.get('target') or '전체'}"
+                + (f"\n [강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else "")
             )
             embed.add_field(name=f"── {i}. {lecture['title']} ──", value=value, inline=False)
 
@@ -241,7 +260,6 @@ async def cmd_rels(ctx):
 
     except Exception as exc:
         await ctx.send(f"오류가 발생했어요: {exc}")
-
  
  
 @bot.command(name="인원")
@@ -251,11 +269,11 @@ async def cmd_headcount(ctx):
         enroll_map = fetch_enrollment_counts(lectures)
  
         if not lectures:
-            await ctx.send("현재 진행 중인 릴스 강연이 없어요.")
+            await ctx.send("현재 진행 중인 릴레이 스터디가 없어요.")
             return
  
         embed = discord.Embed(
-            title="릴스 강연 인원 현황",
+            title="릴레이 스터디 인원 현황",
             color=0x5865F2,
             timestamp=datetime.now(timezone.utc),
         )
