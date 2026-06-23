@@ -24,8 +24,21 @@ intents = discord.Intents.default()
 intents.message_content = True
  
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+def _parse_deadline(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        text = str(value).replace(" ", "T")
+        if not text.endswith("Z") and "+" not in text:
+            text += "+00:00"
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
  
- 
+
 def fmt_date(value):
     if not value:
         return "미정"
@@ -216,8 +229,9 @@ async def cmd_rels(ctx):
             deadline = lecture.get("application_deadline")
             if not deadline:
                 return True
-            parsed = _parse_deadline(deadline)
-            if parsed is None:
+            try:
+                parsed = datetime.fromisoformat(str(deadline).replace("Z", "+00:00"))
+            except ValueError:
                 return True
             return parsed > now
 
