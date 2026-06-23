@@ -77,7 +77,7 @@ def fmt_deadline(value):
  
 def make_new_lecture_embed(lecture):
     embed = discord.Embed(
-        title="새 릴레이 스터기가 등록됐어요",
+        title="새 릴레이 스터디가 등록됐어요",
         color=0x5865F2,
         timestamp=datetime.now(timezone.utc),
     )
@@ -253,7 +253,11 @@ async def cmd_rels(ctx):
                 f"대상자: {lecture.get('target') or '전체'}"
                 + (f"\n [강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else "")
             )
-            embed.add_field(name=f"── {i}. {lecture['title']} ──", value=value, inline=False)
+            status_tag = "개설 확정" if lecture["status"] in {"CONFIRMED", "CONFIRM"} else "개설 미정"
+            target = lecture.get('target') or '전체'
+            url_part = f"\n [강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else ""
+            value = f"{status_tag}{url_part}"
+            embed.add_field(name=f"{lecture['title']} - {lecture['creator_name']} ({target})", value=value, inline=False)
 
         embed.set_footer(text="GSM 릴스 봇")
         await ctx.send(embed=embed)
