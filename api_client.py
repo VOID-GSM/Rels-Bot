@@ -83,16 +83,6 @@ def _first(source, *keys, default=None):
     return default
  
  
-def _parse_datetime(value):
-    if not value or not isinstance(value, str):
-        return None
- 
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
- 
- 
 def _format_target(capacity_by_grade):
     if not isinstance(capacity_by_grade, dict) or not capacity_by_grade:
         return "전체"
