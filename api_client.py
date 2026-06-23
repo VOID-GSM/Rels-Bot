@@ -138,7 +138,7 @@ def _normalize(raw):
         "id": _first(raw, "id", "lectureId", default=_first(raw, "title", default="unknown")),
         "title": _first(raw, "title", default="제목 없음"),
         "description": _first(raw, "description", default=""),
-        "status": str(_first(raw, "status", default="OPEN")).upper(),
+        "status": str(_first(raw, "lectureStatus", "lecture_status", "status", default="OPEN")).upper(),
         "lecture_location": _first(raw, "lectureLocation", "lecture_location", "location", default="미정"),
         "lecture_date": lecture_date or (parsed_starts_at.date() if parsed_starts_at else None),
         "lecture_time": lecture_time or (parsed_starts_at.time() if parsed_starts_at else None),
