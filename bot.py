@@ -78,7 +78,7 @@ def fmt_deadline(value):
 def make_new_lecture_embed(lecture):
     embed = discord.Embed(
         title="새 릴레이 스터디가 등록됐어요",
-        color=0x5865F2,
+        color=0xE8B84B,
         timestamp=datetime.now(timezone.utc),
     )
  
@@ -104,7 +104,7 @@ def make_confirmed_embed(lecture, enrolled_count):
     embed = discord.Embed(
         title="릴레이 스터디 개설이 확정됐어요",
         description=f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!",
-        color=0x57F287,
+        color=0xE8B84B,
         timestamp=datetime.now(timezone.utc),
     )
  
@@ -233,13 +233,13 @@ async def cmd_rels(ctx):
         active_lectures = [l for l in lectures if is_active(l)]
 
         if not active_lectures:
-            await ctx.send("현재 신청 가능한 릴레이 스터디가 없어요.")
+            await ctx.send("현재 신청 가능한 강연이 없어요.")
             return
 
         embed = discord.Embed(
-            title="현재 신청 가능한 릴레이 스터디",
-            color=0x5865F2,
-            timestamp=datetime.now(timezone.utc),
+        title="신청 가능한 강연",
+        color=0xE8B84B,
+        timestamp=datetime.now(timezone.utc),
         )
 
         for i, lecture in enumerate(active_lectures, start=1):
@@ -253,11 +253,9 @@ async def cmd_rels(ctx):
                 f"대상자: {lecture.get('target') or '전체'}"
                 + (f"\n [강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else "")
             )
-            status_tag = "개설 확정" if lecture["status"] in {"CONFIRMED", "CONFIRM"} else "개설 미정"
             target = lecture.get('target') or '전체'
-            url_part = f"\n [강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else ""
-            value = f"{status_tag}{url_part}"
-            embed.add_field(name=f"{lecture['title']} - {lecture['creator_name']} ({target})", value=value, inline=False)
+            url_part = f"[강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else ""
+            embed.add_field(name=f"{lecture['title']} - {lecture['creator_name']} ({target})", value=url_part or "", inline=False)
 
         embed.set_footer(text="GSM 릴스 봇")
         await ctx.send(embed=embed)
@@ -273,12 +271,12 @@ async def cmd_headcount(ctx):
         enroll_map = fetch_enrollment_counts(lectures)
  
         if not lectures:
-            await ctx.send("현재 진행 중인 릴레이 스터디가 없어요.")
+            await ctx.send("현재 진행 중인 강연이 없어요.")
             return
  
         embed = discord.Embed(
             title="릴레이 스터디 인원 현황",
-            color=0x5865F2,
+            color=0xE8B84B,
             timestamp=datetime.now(timezone.utc),
         )
  
