@@ -76,7 +76,7 @@ def fmt_deadline(value):
  
 def make_new_lecture_embed(lecture):
     embed = discord.Embed(
-        title="새 릴스 강연이 등록됐어요",
+        title="새 릴레이 스터기가 등록됐어요",
         color=0x5865F2,
         timestamp=datetime.now(timezone.utc),
     )
@@ -92,6 +92,9 @@ def make_new_lecture_embed(lecture):
     embed.add_field(name="신청 마감", value=fmt_deadline(lecture["application_deadline"]), inline=False)
     embed.add_field(name="대상자", value=lecture.get("target") or "전체", inline=False)
  
+    if lecture.get("lecture_url"):
+        embed.add_field(name="신청 링크", value=f"[강연 신청하기]({lecture['lecture_url']})", inline=False)
+
     embed.set_footer(text="GSM 릴스 봇")
     return embed
  
