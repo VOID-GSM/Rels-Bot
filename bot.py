@@ -303,7 +303,7 @@ async def cmd_headcount(ctx):
  
 @bot.command(name="도움말")
 async def cmd_help(ctx):
-    embed = discord.Embed(title="릴스 봇 명령어 목록",color=0xE8B84B)
+    embed = discord.Embed(title="릴스 봇 명령어 목록", color=0xE8B84B)
     embed.add_field(name="!릴스", value="현재 신청 가능한 강연 목록을 보여줘요.", inline=False)
     embed.add_field(name="!인원", value="강연별 신청 인원 현황을 보여줘요.", inline=False)
     embed.add_field(name="!도움말", value="명령어 목록을 보여줘요.", inline=False)
