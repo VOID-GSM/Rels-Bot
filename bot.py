@@ -1,7 +1,7 @@
 import asyncio
 import os
 from datetime import date, datetime, time, timezone
- 
+    
 import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
@@ -242,8 +242,6 @@ async def cmd_rels(ctx):
     except Exception as exc:
         await ctx.send(f"오류가 발생했어요: {exc}")
 
-    except Exception as exc:
-        await ctx.send(f"오류가 발생했어요: {exc}")
  
  
 @bot.command(name="인원")
