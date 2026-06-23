@@ -25,20 +25,22 @@ intents.message_content = True
  
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
-def _parse_deadline(value):
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+def is_active(lecture):
+    deadline = lecture.get("application_deadline")
+    if not deadline:
+        return True
     try:
-        text = str(value).upper().replace(" ", "T")
-        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except ValueError:
-        return None
- 
+        text = str(deadline).strip().replace(" ", "T")
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        if "+" not in text and "-" not in text[10:]:
+            text += "+00:00"
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed > now
+    except Exception:
+        return True 
 
 def fmt_date(value):
     if not value:
