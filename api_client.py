@@ -4,7 +4,7 @@ from datetime import datetime
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from datetime import datetime, timezone
+from datetime import timezone
  
 from dotenv import load_dotenv
  
