@@ -226,9 +226,10 @@ async def cmd_rels(ctx):
                 f"강연 일시: {fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}\n\n"
                 f"장소: {lecture['lecture_location'] or '미정'}\n\n"
                 f"신청 마감: {fmt_deadline(lecture['application_deadline'])}\n\n"
-                f"대상자: {lecture.get('target') or '전체'}\n\n"
-                f"[강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else ""
+                f"대상자: {lecture.get('target') or '전체'}"
             )
+            if lecture.get('lecture_url'):
+                value += f"\n\n[강연 신청하기]({lecture['lecture_url']})"
             embed.add_field(name=lecture["title"], value=value, inline=False)
  
         embed.set_footer(text="GSM 릴스 봇")
