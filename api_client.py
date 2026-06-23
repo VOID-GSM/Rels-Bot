@@ -4,6 +4,7 @@ from datetime import datetime
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from datetime import timezone
  
 from dotenv import load_dotenv
  
@@ -80,16 +81,6 @@ def _first(source, *keys, default=None):
             return value
  
     return default
- 
- 
-def _parse_datetime(value):
-    if not value or not isinstance(value, str):
-        return None
- 
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
  
  
 def _format_target(capacity_by_grade):
@@ -185,3 +176,15 @@ def fetch_enrollment_counts(lectures=None):
         }
         for lecture in lectures
     }
+
+def _parse_datetime(value):
+    if not value or not isinstance(value, str):
+        return None
+
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None

@@ -1,7 +1,7 @@
 import asyncio
 import os
 from datetime import date, datetime, time, timezone
- 
+    
 import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
@@ -25,22 +25,7 @@ intents.message_content = True
  
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
-def is_active(lecture):
-    deadline = lecture.get("application_deadline")
-    if not deadline:
-        return True
-    try:
-        text = str(deadline).strip().replace(" ", "T")
-        if text.endswith("Z"):
-            text = text[:-1] + "+00:00"
-        if "+" not in text and "-" not in text[10:]:
-            text += "+00:00"
-        parsed = datetime.fromisoformat(text)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed > now
-    except Exception:
-        return True 
+ 
 
 def fmt_date(value):
     if not value:
@@ -117,7 +102,7 @@ def make_new_lecture_embed(lecture):
  
 def make_confirmed_embed(lecture, enrolled_count):
     embed = discord.Embed(
-        title="릴스 강연 개설이 확정됐어요",
+        title="릴레이 스터디 개설이 확정됐어요",
         description=f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!",
         color=0x57F287,
         timestamp=datetime.now(timezone.utc),
@@ -224,21 +209,9 @@ async def before_poll():
 @bot.command(name="릴스")
 async def cmd_rels(ctx):
     try:
-        lectures = fetch_all_lectures_basic()
+        lectures = fetch_open_lectures()
 
-        now = datetime.now(timezone.utc)
-
-        def is_active(lecture):
-            deadline = lecture.get("application_deadline")
-            if not deadline:
-                return True
-            try:
-                parsed = datetime.fromisoformat(str(deadline).replace("Z", "+00:00"))
-            except ValueError:
-                return True
-            return parsed > now
-
-        active_lectures = [l for l in lectures if is_active(l)]
+        active_lectures = lectures
 
         if not active_lectures:
             await ctx.send("현재 신청 가능한 릴스 강연이 없어요.")
@@ -251,7 +224,9 @@ async def cmd_rels(ctx):
         )
 
         for i, lecture in enumerate(active_lectures, start=1):
+            status_tag = "✅ 개설 확정" if lecture["status"] in {"CONFIRMED", "CONFIRM"} else "⏳ 개설 미정"
             value = (
+                f"{status_tag}\n"
                 f"👤 연사자: {lecture['creator_name']}\n"
                 f"📅 강연 일시: {fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}\n"
                 f"📍 장소: {lecture['lecture_location'] or '미정'}\n"
@@ -266,6 +241,7 @@ async def cmd_rels(ctx):
 
     except Exception as exc:
         await ctx.send(f"오류가 발생했어요: {exc}")
+
  
  
 @bot.command(name="인원")
