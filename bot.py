@@ -253,10 +253,9 @@ async def cmd_rels(ctx):
                 f"대상자: {lecture.get('target') or '전체'}"
                 + (f"\n [강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else "")
             )
-            for i, lecture in enumerate(active_lectures, start=1):
-                target = lecture.get('target') or '전체'
-                url_part = f"[강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else ""
-                embed.add_field(name=f"{lecture['title']} - {lecture['creator_name']} ({target})", value=url_part or "​", inline=False)
+            target = lecture.get('target') or '전체'
+            url_part = f"[강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else ""
+            embed.add_field(name=f"{lecture['title']} - {lecture['creator_name']} ({target})", value=url_part or "", inline=False)
 
         embed.set_footer(text="GSM 릴스 봇")
         await ctx.send(embed=embed)
