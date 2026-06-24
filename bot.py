@@ -243,7 +243,7 @@ async def cmd_rels(ctx):
         )
 
         for i, lecture in enumerate(active_lectures, start=1):
-            status_tag = "개설 확정" if lecture["status"] in {"CONFIRMED", "CONFIRM"} else "개설 미정"
+            status_tag = "✅개설 확정" if lecture["status"] in {"CONFIRMED", "CONFIRM"} else "❌개설 미정"
             value = (
                 f"{status_tag}\n"
                 f"연사자: {lecture['creator_name']}\n\n"
@@ -254,8 +254,9 @@ async def cmd_rels(ctx):
                 + (f"\n [강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else "")
             )
             target = lecture.get('target') or '전체'
-            url_part = f"[강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else ""
-            embed.add_field(name=f"{lecture['title']} - {lecture['creator_name']} ({target})", value=url_part or "", inline=False)
+            url_part = f"\n🔗 [강연 신청하기]({lecture['lecture_url']})" if lecture.get('lecture_url') else ""
+            value = f"✅ 개설 확정{url_part}" if lecture["status"] in {"CONFIRMED", "CONFIRM"} else url_part or ""
+            embed.add_field(name=f"{lecture['title']} - {lecture['creator_name']} ({target})", value=value, inline=False)
 
         embed.set_footer(text="GSM 릴스 봇")
         await ctx.send(embed=embed)
