@@ -5,4 +5,4 @@
 
 *.py linguist-language=Python
 bot_state.sqlite3 linguist-vendored
-.venv/ linguist-vendored
+.venv/** linguist-vendored\n
