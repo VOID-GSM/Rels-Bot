@@ -141,8 +141,8 @@ def _normalize(raw):
     except (TypeError, ValueError):
         total_capacity = 0
 
-    starts_at = _parse_datetime(_first(raw, "startsAt", "startAt", "lectureAt"))
-    lecture_id = _first(raw, "lectureId", "id")
+    lecture_id = _first(raw, "id", "lectureId")
+    url_id = _first(raw, "lectureId", "id")
 
     return {
         "id": lecture_id or _first(raw, "title", default="unknown"),
@@ -157,7 +157,7 @@ def _normalize(raw):
         "creator_name": _first(raw, "creatorName", "creator_name", "speakerName", "speaker", default="미정"),
         "target": _format_target(capacity_by_grade),
         "enrolled_count": enrolled_count,
-        "lecture_url": f"{LECTURE_BASE_URL}/{lecture_id}" if lecture_id else None,
+        "lecture_url": f"{LECTURE_BASE_URL}/{url_id}" if url_id else None,
     }
 
 
