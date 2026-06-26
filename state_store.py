@@ -34,31 +34,28 @@ def _connect():
 
 
 def init_state_store():
-    with _connect() as conn:
-        conn.execute(_CREATE_TABLE_SQL)
-        conn.commit()
+    from contextlib import closing
+    with closing(_connect()) as conn:
+        with conn:
+            conn.execute(_CREATE_TABLE_SQL)
 
 
 def was_notified(lecture_id, notification_type):
-    """이미 해당 알림을 보냈는지 조회 (점유하지 않음)."""
-    with _connect() as conn:
+    from contextlib import closing
+    with closing(_connect()) as conn:
         row = conn.execute(_SELECT_SQL, (str(lecture_id), notification_type)).fetchone()
     return row is not None
 
 
 def claim_notification(lecture_id, notification_type, title):
-    """
-    아직 보낸 적 없는 알림이면 즉시 DB에 기록(점유)하고 True를 반환.
-    이미 기록된 알림이면 False를 반환.
-    INSERT OR IGNORE + rowcount로 동시성 안전하게 처리.
-    """
-    with _connect() as conn:
-        cur = conn.execute(
-            _INSERT_SQL,
-            (str(lecture_id), notification_type, datetime.now(timezone.utc).isoformat(), title),
-        )
-        conn.commit()
-    return cur.rowcount == 1
+    from contextlib import closing
+    with closing(_connect()) as conn:
+        with conn:
+            cur = conn.execute(
+                _INSERT_SQL,
+                (str(lecture_id), notification_type, datetime.now(timezone.utc).isoformat(), title),
+            )
+        return cur.rowcount == 1
 
 
 def mark_notified(lecture_id, notification_type, title):
