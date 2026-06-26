@@ -32,8 +32,6 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 
-# ── 포맷 헬퍼 ──────────────────────────────────────────────────────────────
-
 def fmt_date(value):
     if not value:
         return "미정"
@@ -61,8 +59,6 @@ def fmt_deadline(value):
         text = text.split(".", 1)[0]
     return text.rstrip("Z")
 
-
-# ── Embed 빌더 ─────────────────────────────────────────────────────────────
 
 def _lecture_datetime_str(lecture):
     return f"{fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}"
@@ -104,9 +100,6 @@ def make_confirmed_embed(lecture, enrolled_count):
     embed.set_footer(text="GSM 릴스 봇")
     return embed
 
-
-# ── 봇 유틸 ───────────────────────────────────────────────────────────────
-
 def get_notify_channel():
     return bot.get_channel(NOTIFY_CHANNEL_ID)
 
@@ -122,8 +115,6 @@ def get_student_role_mention():
 def is_confirmed_lecture(lecture, enrolled_count):
     return lecture["status"] in CONFIRMED_STATUSES or enrolled_count >= CONFIRMED_MIN
 
-
-# ── 폴링 루프 ──────────────────────────────────────────────────────────────
 
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api():
@@ -187,8 +178,6 @@ async def before_poll():
         print(f"[초기화 오류] {type(exc).__name__}: {exc}")
 
 
-# ── 명령어 ─────────────────────────────────────────────────────────────────
-
 @bot.command(name="릴스")
 async def cmd_rels(ctx):
     try:
@@ -198,22 +187,24 @@ async def cmd_rels(ctx):
             await ctx.send("현재 신청 가능한 강연이 없어요.")
             return
 
+        display_lectures = lectures[:25]
+
         embed = discord.Embed(
             title="📋 신청 가능한 강연",
             color=0xE8B84B,
             timestamp=datetime.now(timezone.utc),
         )
 
-        for lecture in lectures:
+        for lecture in display_lectures:
             target = lecture.get("target") or "전체"
             is_confirmed = lecture["status"] in CONFIRMED_STATUSES
 
             lines = []
             if is_confirmed:
                 lines.append("✅ 개설 확정")
-            lines.append(f"📅 {fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}")
-            lines.append(f"⏰ 마감 {fmt_deadline(lecture['application_deadline'])}")
-            lines.append(f"🎯 대상 {target}")
+            lines.append(f"{fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}")
+            lines.append(f"마감 {fmt_deadline(lecture['application_deadline'])}")
+            lines.append(f"대상 {target}")
             if lecture.get("lecture_url"):
                 lines.append(f"🔗 [신청하기]({lecture['lecture_url']})")
 
@@ -223,7 +214,10 @@ async def cmd_rels(ctx):
                 inline=False,
             )
 
-        embed.set_footer(text="GSM 릴스 봇")
+        if len(lectures) > 25:
+            embed.set_footer(text="GSM 릴스 봇 • 25개 이상의 강연 중 상위 25개만 표시됨")
+        else:
+            embed.set_footer(text="GSM 릴스 봇")
         await ctx.send(embed=embed)
 
     except Exception as exc:
@@ -273,8 +267,6 @@ async def cmd_help(ctx):
     embed.set_footer(text="GSM 릴스 봇")
     await ctx.send(embed=embed)
 
-
-# ── 이벤트 ────────────────────────────────────────────────────────────────
 
 @bot.event
 async def on_ready():
