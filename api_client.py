@@ -84,30 +84,20 @@ def _first(source, *keys, default=None):
 
 
 def _parse_datetime(value):
-    if not value or not isinstance(value, str):
-        return None
-
-    try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
-
-
-def _parse_deadline(value):
     if not value:
         return None
-
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-
+    if not isinstance(value, str):
+        return None
     try:
-        text = str(value).strip().replace(" ", "T").replace("Z", "+00:00")
+        text = value.strip().replace(" ", "T").replace("Z", "+00:00").replace("z", "+00:00")
         dt = datetime.fromisoformat(text)
         return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     except ValueError:
         return None
-
+def _parse_deadline(value):
+    return _parse_datetime(value)
 
 def _format_target(capacity_by_grade):
     if not isinstance(capacity_by_grade, dict) or not capacity_by_grade:
