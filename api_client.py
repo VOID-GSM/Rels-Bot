@@ -96,6 +96,7 @@ def _parse_datetime(value):
         return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     except ValueError:
         return None
+    
 def _parse_deadline(value):
     return _parse_datetime(value)
 
@@ -131,9 +132,9 @@ def _normalize(raw):
     total_capacity = _first(raw, "totalCapacity", "total_capacity", "capacity", default=0)
     if not total_capacity and isinstance(capacity_by_grade, dict):
         total_capacity = sum(
-            int(v or 0)
+            int(v)
             for v in capacity_by_grade.values()
-            if str(v or "").isdigit() or isinstance(v, int)
+            if isinstance(v, int) or (isinstance(v, str) and v.strip().isdigit())
         )
     try:
         total_capacity = int(total_capacity or 0)
