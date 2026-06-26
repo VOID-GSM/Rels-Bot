@@ -12,7 +12,7 @@ load_dotenv()
  
 LECTURES_API_URL = os.getenv(
     "LECTURES_API_URL",
-    "https://rels-alpha.vercel.app/api/lectures/discord",
+    "https://rels.io.kr:38705/api/lectures/discord",
 )
 PAGE_SIZE = int(os.getenv("LECTURES_PAGE_SIZE", "100"))
  
