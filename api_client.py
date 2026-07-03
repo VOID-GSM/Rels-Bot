@@ -168,7 +168,6 @@ def fetch_open_lectures():
 
 
 def fetch_active_lectures():
-    """신청 마감이 지나지 않은 OPEN/CONFIRMED 강연만 반환."""
     now = datetime.now(timezone.utc)
     result = []
 
