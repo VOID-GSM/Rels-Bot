@@ -39,7 +39,6 @@ def fmt_date(value):
         return value.strftime("%Y-%m-%d")
     return str(value).replace("T", " ")
 
-
 def fmt_time(value):
     if not value:
         return "미정"
@@ -47,7 +46,6 @@ def fmt_time(value):
         return value.strftime("%H:%M")
     text = str(value)
     return text.split(".", 1)[0] if "." in text else text
-
 
 def fmt_deadline(value):
     if not value:
@@ -59,10 +57,8 @@ def fmt_deadline(value):
         text = text.split(".", 1)[0]
     return text.rstrip("Z")
 
-
 def _lecture_datetime_str(lecture):
     return f"{fmt_date(lecture['lecture_date'])} {fmt_time(lecture['lecture_time'])}"
-
 
 def make_new_lecture_embed(lecture):
     embed = discord.Embed(
@@ -80,7 +76,6 @@ def make_new_lecture_embed(lecture):
         embed.add_field(name="신청 링크", value=f"[강연 신청하기]({lecture['lecture_url']})", inline=False)
     embed.set_footer(text="GSM 릴스 봇")
     return embed
-
 
 def make_confirmed_embed(lecture, enrolled_count):
     embed = discord.Embed(
@@ -103,7 +98,6 @@ def make_confirmed_embed(lecture, enrolled_count):
 def get_notify_channel():
     return bot.get_channel(NOTIFY_CHANNEL_ID)
 
-
 def get_student_role_mention():
     guild = bot.get_guild(GUILD_ID)
     if guild is None:
@@ -111,10 +105,8 @@ def get_student_role_mention():
     role = guild.get_role(STUDENT_ROLE_ID)
     return role.mention if role else ""
 
-
 def is_confirmed_lecture(lecture, enrolled_count):
     return lecture["status"] in CONFIRMED_STATUSES or enrolled_count >= CONFIRMED_MIN
-
 
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api():
@@ -152,7 +144,6 @@ async def poll_api():
     except Exception as exc:
         print(f"[오류] {type(exc).__name__}: {exc}")
 
-
 @poll_api.before_loop
 async def before_poll():
     await bot.wait_until_ready()
@@ -176,7 +167,6 @@ async def before_poll():
         print(f"[초기화 API 오류] {exc}")
     except Exception as exc:
         print(f"[초기화 오류] {type(exc).__name__}: {exc}")
-
 
 @bot.command(name="릴스")
 async def cmd_rels(ctx):
@@ -223,7 +213,6 @@ async def cmd_rels(ctx):
     except Exception as exc:
         await ctx.send(f"오류가 발생했어요: {exc}")
 
-
 @bot.command(name="인원")
 async def cmd_headcount(ctx):
     try:
@@ -257,7 +246,6 @@ async def cmd_headcount(ctx):
     except Exception as exc:
         await ctx.send(f"오류가 발생했어요: {exc}")
 
-
 @bot.command(name="도움말")
 async def cmd_help(ctx):
     embed = discord.Embed(title="릴스 봇 명령어 목록", color=0xE8B84B)
@@ -267,13 +255,11 @@ async def cmd_help(ctx):
     embed.set_footer(text="GSM 릴스 봇")
     await ctx.send(embed=embed)
 
-
 @bot.event
 async def on_ready():
     print(f"[봇 시작] {bot.user} 로그인 완료")
     if not poll_api.is_running():
         poll_api.start()
-
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -281,7 +267,6 @@ async def on_command_error(ctx, error):
         await ctx.send("없는 명령어예요. `!도움말`로 명령어 목록을 확인해보세요!")
     else:
         raise error
-
 
 if __name__ == "__main__":
     if not DISCORD_TOKEN:

@@ -22,11 +22,9 @@ OPEN_STATUSES = {"OPEN", "CONFIRMED", "CONFIRM"}
 class ApiError(RuntimeError):
     pass
 
-
 def _with_query(url, params):
     separator = "&" if "?" in url else "?"
     return f"{url}{separator}{urlencode(params)}"
-
 
 def _request_json(url):
     request = Request(
@@ -51,7 +49,6 @@ def _request_json(url):
     except json.JSONDecodeError as exc:
         raise ApiError(f"API 응답이 JSON이 아닙니다: {body[:300]}") from exc
 
-
 def _pick_lectures(payload):
     if isinstance(payload, list):
         return payload
@@ -70,7 +67,6 @@ def _pick_lectures(payload):
 
     return []
 
-
 def _first(source, *keys, default=None):
     if not isinstance(source, dict):
         return default
@@ -81,7 +77,6 @@ def _first(source, *keys, default=None):
             return value
 
     return default
-
 
 def _parse_datetime(value):
     if not value:
@@ -118,7 +113,6 @@ def _format_target(capacity_by_grade):
         grades.sort()
 
     return ", ".join(f"{grade}학년" for grade in grades) if grades else "전체"
-
 
 def _normalize(raw):
     capacity_by_grade = _first(raw, "capacityByGrade", "capacity_by_grade", default={}) or {}
@@ -160,12 +154,10 @@ def _normalize(raw):
         "lecture_url": f"{LECTURE_BASE_URL}/{url_id}" if url_id else None,
     }
 
-
 def fetch_open_lectures():
     payload = _request_json(_with_query(LECTURES_API_URL, {"size": PAGE_SIZE}))
     lectures = [_normalize(item) for item in _pick_lectures(payload)]
     return [l for l in lectures if l["status"] in OPEN_STATUSES]
-
 
 def fetch_active_lectures():
     now = datetime.now(timezone.utc)
@@ -178,10 +170,8 @@ def fetch_active_lectures():
 
     return result
 
-
 def fetch_all_lectures_basic():
     return [l for l in fetch_open_lectures() if l["status"] == "OPEN"]
-
 
 def fetch_enrollment_counts(lectures=None):
     if lectures is None:
