@@ -1,4 +1,8 @@
 * text=auto eol=lf
 *.py text eol=lf
-*.env text eol=lf
 *.md text eol=lf
+*.env text eol=lf
+
+*.py linguist-language=Python
+bot_state.sqlite3 linguist-vendored
+.venv/** linguist-vendored
