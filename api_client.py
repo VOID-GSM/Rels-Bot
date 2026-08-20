@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -20,13 +21,16 @@ OPEN_STATUSES = {"OPEN", "CONFIRMED", "CONFIRM"}
 
 
 class ApiError(RuntimeError):
+    """API 요청 관련 지정 예외"""
     pass
 
-def _with_query(url, params):
+
+def _with_query(url: str, params: Dict[str, Any]) -> str:
     separator = "&" if "?" in url else "?"
     return f"{url}{separator}{urlencode(params)}"
 
-def _request_json(url):
+
+def _request_json(url: str) -> Any:
     request = Request(
         url,
         headers={
@@ -46,10 +50,11 @@ def _request_json(url):
 
     try:
         return json.loads(body)
-    except json.JSONDecodeError as exc:
-        raise ApiError(f"API 응답이 JSON이 아닙니다: {body[:300]}") from exc
+    except json.JSONDecodeError as exc:  # 오타 수정 (JSONDecodaeError -> JSONDecodeError)
+        raise ApiError(f"API 응답을 확인해주세요: {body[:300]}") from exc
 
-def _pick_lectures(payload):
+
+def _pick_lectures(payload: Any) -> List[Dict[str, Any]]:
     if isinstance(payload, list):
         return payload
 
@@ -67,7 +72,8 @@ def _pick_lectures(payload):
 
     return []
 
-def _first(source, *keys, default=None):
+
+def _first(source: Dict[str, Any], *keys: str, default: Any = None) -> Any:
     if not isinstance(source, dict):
         return default
 
@@ -78,24 +84,24 @@ def _first(source, *keys, default=None):
 
     return default
 
-def _parse_datetime(value):
+
+def _parse_datetime(value: Any) -> Optional[datetime]:
     if not value:
         return None
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     if not isinstance(value, str):
         return None
+
     try:
         text = value.strip().replace(" ", "T").replace("Z", "+00:00").replace("z", "+00:00")
         dt = datetime.fromisoformat(text)
         return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     except ValueError:
         return None
-    
-def _parse_deadline(value):
-    return _parse_datetime(value)
 
-def _format_target(capacity_by_grade):
+
+def _format_target(capacity_by_grade: Any) -> str:
     if not isinstance(capacity_by_grade, dict) or not capacity_by_grade:
         return "전체"
 
@@ -107,33 +113,37 @@ def _format_target(capacity_by_grade):
         except (TypeError, ValueError):
             continue
 
-    try:
-        grades.sort(key=int)
-    except ValueError:
-        grades.sort()
+    if not grades:
+        return "전체"
 
-    return ", ".join(f"{grade}학년" for grade in grades) if grades else "전체"
+    # 정수 정렬 시도 후 실패 시 일반 정렬 처리
+    grades.sort(key=lambda g: int(g) if g.isdigit() else g)
+    return ", ".join(f"{grade}학년" for grade in grades)
 
-def _normalize(raw):
+
+def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
     capacity_by_grade = _first(raw, "capacityByGrade", "capacity_by_grade", default={}) or {}
 
-    enrolled_count = _first(raw, "enrolledCount", "enrolled_count", "applicantCount", default=0)
+    # 수강 신청 인원 파싱
     try:
-        enrolled_count = int(enrolled_count or 0)
+        enrolled_count = int(_first(raw, "enrolledCount", "enrolled_count", "applicantCount", default=0) or 0)
     except (TypeError, ValueError):
         enrolled_count = 0
 
+    # 정원 계산
     total_capacity = _first(raw, "totalCapacity", "total_capacity", "capacity", default=0)
     if not total_capacity and isinstance(capacity_by_grade, dict):
         total_capacity = sum(
-            int(v)
-            for v in capacity_by_grade.values()
+            int(v) for v in capacity_by_grade.values()
             if isinstance(v, int) or (isinstance(v, str) and v.strip().isdigit())
         )
     try:
         total_capacity = int(total_capacity or 0)
     except (TypeError, ValueError):
         total_capacity = 0
+
+    starts_at_raw = _first(raw, "startsAt", "starts_at", "startDate", "start_date")
+    starts_at = _parse_datetime(starts_at_raw)
 
     lecture_id = _first(raw, "id", "lectureId")
     url_id = _first(raw, "lectureId", "id")
@@ -154,26 +164,30 @@ def _normalize(raw):
         "lecture_url": f"{LECTURE_BASE_URL}/{url_id}" if url_id else None,
     }
 
-def fetch_open_lectures():
+
+def fetch_open_lectures() -> List[Dict[str, Any]]:
     payload = _request_json(_with_query(LECTURES_API_URL, {"size": PAGE_SIZE}))
     lectures = [_normalize(item) for item in _pick_lectures(payload)]
     return [l for l in lectures if l["status"] in OPEN_STATUSES]
 
-def fetch_active_lectures():
+
+def fetch_active_lectures() -> List[Dict[str, Any]]:
     now = datetime.now(timezone.utc)
-    result = []
+    active = []
 
     for lecture in fetch_open_lectures():
-        deadline = _parse_deadline(lecture.get("application_deadline"))
+        deadline = _parse_datetime(lecture.get("application_deadline"))
         if deadline is None or deadline > now:
-            result.append(lecture)
+            active.append(lecture)
 
-    return result
+    return active
 
-def fetch_all_lectures_basic():
+
+def fetch_all_lectures_basic() -> List[Dict[str, Any]]:
     return [l for l in fetch_open_lectures() if l["status"] == "OPEN"]
 
-def fetch_enrollment_counts(lectures=None):
+
+def fetch_enrollment_counts(lectures: Optional[List[Dict[str, Any]]] = None) -> Dict[Any, Dict[str, Any]]:
     if lectures is None:
         lectures = fetch_open_lectures()
 
