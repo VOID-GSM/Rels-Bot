@@ -73,6 +73,7 @@ def _make_progress_bar(enrolled: int, capacity: int, width: int = 10) -> str:
     filled = min(round((enrolled / capacity) * width), width)
     return "█" * filled + "░" * (width - filled)
 
+
 def _build_base_embed(title: str, lecture: Dict[str, Any], description: Optional[str] = None) -> discord.Embed:
     embed = discord.Embed(
         title=title,
@@ -106,6 +107,7 @@ def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discor
     embed.set_footer(text=FOOTER_TEXT)
     return embed
 
+
 def get_notify_channel() -> Optional[discord.TextChannel]:
     return bot.get_channel(NOTIFY_CHANNEL_ID)
 
@@ -120,6 +122,7 @@ def get_student_role_mention() -> str:
 
 def is_confirmed_lecture(lecture: Dict[str, Any], enrolled_count: int) -> bool:
     return lecture.get("status") in CONFIRMED_STATUSES or enrolled_count >= CONFIRMED_MIN
+
 
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api() -> None:
@@ -138,14 +141,18 @@ async def poll_api() -> None:
             lecture_id = lecture["id"]
             enrolled_count = int(enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0)
 
-            if lecture.get("status") == "OPEN" and claim_notification(lecture_id, "new", lecture["title"]):
+            if lecture.get("status") == "OPEN" and claim_notification(
+                lecture_id, "new", lecture["title"]
+            ):
                 await channel.send(
                     content=f"{role_mention} 새 릴레이 스터디가 등록됐어요!",
                     embed=make_new_lecture_embed(lecture),
                 )
                 await asyncio.sleep(0.5)
 
-            if is_confirmed_lecture(lecture, enrolled_count) and claim_notification(lecture_id, "confirmed", lecture["title"]):
+            if is_confirmed_lecture(lecture, enrolled_count) and claim_notification(
+                lecture_id, "confirmed", lecture["title"]
+            ):
                 await channel.send(
                     content=f"{role_mention} 릴레이 스터디 개설이 확정됐어요!",
                     embed=make_confirmed_embed(lecture, enrolled_count),
@@ -181,6 +188,7 @@ async def before_poll() -> None:
         print(f"[초기화 API 오류] {exc}")
     except Exception as exc:
         print(f"[초기화 오류] {type(exc).__name__}: {exc}")
+
 
 @bot.command(name="릴스")
 async def cmd_rels(ctx: commands.Context) -> None:
@@ -225,6 +233,7 @@ async def cmd_rels(ctx: commands.Context) -> None:
     except Exception as exc:
         await ctx.send(f"오류가 발생했어요: {exc}")
 
+
 @bot.command(name="인원")
 async def cmd_headcount(ctx: commands.Context) -> None:
     try:
@@ -245,10 +254,12 @@ async def cmd_headcount(ctx: commands.Context) -> None:
             lecture_id = lecture["id"]
             enrolled_count = int(enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0)
             capacity = int(lecture.get("total_capacity") or (CONFIRMED_MIN * 3))
-            
+
             bar = _make_progress_bar(enrolled_count, capacity)
-            status_tag = "개설 확정" if enrolled_count >= CONFIRMED_MIN else f"{CONFIRMED_MIN - enrolled_count}명 더 모이면 확정"
-        
+            status_tag = (
+                "개설 확정" if enrolled_count >= CONFIRMED_MIN else f"{CONFIRMED_MIN - enrolled_count}명 더 모이면 확정"
+            )
+
             value = f"`{bar}` {enrolled_count}/{capacity}명 | {status_tag}"
             embed.add_field(name=lecture["title"], value=value, inline=False)
 
@@ -257,6 +268,7 @@ async def cmd_headcount(ctx: commands.Context) -> None:
 
     except Exception as exc:
         await ctx.send(f"오류가 발생했어요: {exc}")
+
 
 @bot.command(name="도움말")
 async def cmd_help(ctx: commands.Context) -> None:
@@ -267,11 +279,13 @@ async def cmd_help(ctx: commands.Context) -> None:
     embed.set_footer(text=FOOTER_TEXT)
     await ctx.send(embed=embed)
 
+
 @bot.event
 async def on_ready() -> None:
     print(f"[봇 시작] {bot.user} 로그인 완료")
     if not poll_api.is_running():
         poll_api.start()
+
 
 @bot.event
 async def on_command_error(ctx: commands.Context, error: Exception) -> None:
@@ -279,6 +293,7 @@ async def on_command_error(ctx: commands.Context, error: Exception) -> None:
         await ctx.send("없는 명령어예요. `!도움말`로 명령어 목록을 확인해보세요!")
     else:
         raise error
+
 
 if __name__ == "__main__":
     if not DISCORD_TOKEN:

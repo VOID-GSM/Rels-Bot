@@ -50,7 +50,7 @@ def _request_json(url: str) -> Any:
 
     try:
         return json.loads(body)
-    except json.JSONDecodeError as exc:  # 오타 수정 (JSONDecodaeError -> JSONDecodeError)
+    except json.JSONDecodeError as exc:
         raise ApiError(f"API 응답을 확인해주세요: {body[:300]}") from exc
 
 
@@ -116,7 +116,6 @@ def _format_target(capacity_by_grade: Any) -> str:
     if not grades:
         return "전체"
 
-    # 정수 정렬 시도 후 실패 시 일반 정렬 처리
     grades.sort(key=lambda g: int(g) if g.isdigit() else g)
     return ", ".join(f"{grade}학년" for grade in grades)
 
@@ -124,13 +123,11 @@ def _format_target(capacity_by_grade: Any) -> str:
 def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
     capacity_by_grade = _first(raw, "capacityByGrade", "capacity_by_grade", default={}) or {}
 
-    # 수강 신청 인원 파싱
     try:
         enrolled_count = int(_first(raw, "enrolledCount", "enrolled_count", "applicantCount", default=0) or 0)
     except (TypeError, ValueError):
         enrolled_count = 0
 
-    # 정원 계산
     total_capacity = _first(raw, "totalCapacity", "total_capacity", "capacity", default=0)
     if not total_capacity and isinstance(capacity_by_grade, dict):
         total_capacity = sum(
@@ -168,7 +165,7 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
 def fetch_open_lectures() -> List[Dict[str, Any]]:
     payload = _request_json(_with_query(LECTURES_API_URL, {"size": PAGE_SIZE}))
     lectures = [_normalize(item) for item in _pick_lectures(payload)]
-    return [l for l in lectures if l["status"] in OPEN_STATUSES]
+    return [lec for lec in lectures if lec["status"] in OPEN_STATUSES]
 
 
 def fetch_active_lectures() -> List[Dict[str, Any]]:
@@ -184,17 +181,16 @@ def fetch_active_lectures() -> List[Dict[str, Any]]:
 
 
 def fetch_all_lectures_basic() -> List[Dict[str, Any]]:
-    return [l for l in fetch_open_lectures() if l["status"] == "OPEN"]
+    return [lec for lec in fetch_open_lectures() if lec["status"] == "OPEN"]
 
 
 def fetch_enrollment_counts(lectures: Optional[List[Dict[str, Any]]] = None) -> Dict[Any, Dict[str, Any]]:
-    if lectures is None:
-        lectures = fetch_open_lectures()
+    target_lectures = lectures if lectures is not None else fetch_open_lectures()
 
     return {
         lecture["id"]: {
             "lecture_id": lecture["id"],
             "enrolled_count": lecture.get("enrolled_count", 0),
         }
-        for lecture in lectures
+        for lecture in target_lectures
     }
