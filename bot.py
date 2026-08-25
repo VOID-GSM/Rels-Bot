@@ -96,7 +96,9 @@ def _build_base_embed(
     )
     embed.add_field(name="강연 제목", value=lecture["title"], inline=False)
     embed.add_field(name="연사자", value=lecture["creator_name"], inline=False)
-    embed.add_field(name="강연 일시", value=_lecture_datetime_str(lecture), inline=False)
+    embed.add_field(
+        name="강연 일시", value=_lecture_datetime_str(lecture), inline=False
+    )
     embed.add_field(
         name="장소", value=lecture.get("lecture_location") or "미정", inline=False
     )
@@ -121,11 +123,13 @@ def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
     return embed
 
 
-def make_confirmed_embed(
-    lecture: Dict[str, Any], enrolled_count: int
-) -> discord.Embed:
-    desc = f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
-    embed = _build_base_embed("릴레이 스터디 개설이 확정됐어요", lecture, description=desc)
+def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discord.Embed:
+    desc = (
+        f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
+    )
+    embed = _build_base_embed(
+        "릴레이 스터디 개설이 확정됐어요", lecture, description=desc
+    )
     embed.add_field(name="현재 인원", value=f"{enrolled_count}명", inline=False)
     if lecture.get("lecture_url"):
         embed.add_field(
