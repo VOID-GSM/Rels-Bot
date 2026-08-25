@@ -21,8 +21,10 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "1447887618317619261"))
 
+
 def _parse_id_list(env_val: str) -> List[int]:
     return [int(x.strip()) for x in env_val.split(",") if x.strip().isdigit()]
+
 
 NOTIFY_CHANNEL_IDS = _parse_id_list(
     os.getenv("NOTIFY_CHANNEL_ID", "1490575679786455111,851322917932498964")
@@ -121,7 +123,7 @@ def get_student_role_mentions() -> str:
     guild = bot.get_guild(GUILD_ID)
     if not guild:
         return ""
-    
+
     mentions = []
     for role_id in STUDENT_ROLE_IDS:
         role = guild.get_role(role_id)
