@@ -57,6 +57,7 @@ def fmt_date(value: Optional[Union[datetime, date, str]]) -> str:
         return f"{parts[1]}-{parts[2][:2]}"
     return text
 
+
 def fmt_time(value: Optional[Union[datetime, time, str]]) -> str:
     if not value:
         return ""
@@ -112,7 +113,9 @@ def _build_base_embed(
         timestamp=datetime.now(timezone.utc),
     )
     embed.add_field(name="📌 강연 제목", value=f"**{lecture['title']}**", inline=False)
-    embed.add_field(name="🎯 대상자", value=lecture.get("target") or "전체", inline=True)
+    embed.add_field(
+        name="🎯 대상자", value=lecture.get("target") or "전체", inline=True
+    )
     embed.add_field(
         name="📍 장소", value=lecture.get("lecture_location") or "미정", inline=True
     )
@@ -140,9 +143,7 @@ def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
     return embed
 
 
-def make_confirmed_embed(
-    lecture: Dict[str, Any], enrolled_count: int
-) -> discord.Embed:
+def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discord.Embed:
     desc = f"🎉 **{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
     embed = _build_base_embed("🔥 릴레이 스터디 개설 확정!", lecture, description=desc)
     embed.add_field(name="👥 현재 인원", value=f"**{enrolled_count}명**", inline=True)
