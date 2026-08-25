@@ -69,6 +69,7 @@ def fmt_time(value: Optional[Union[datetime, time, str]]) -> str:
         return f"{parts[0]}:{parts[1]}"
     return text
 
+
 def fmt_deadline(value: Optional[Union[datetime, str]]) -> str:
     if not value:
         return "미정"
@@ -87,6 +88,7 @@ def fmt_deadline(value: Optional[Union[datetime, str]]) -> str:
         if len(parts) >= 3:
             return f"{parts[1]}-{parts[2][:11]}"
         return text
+
 
 def _lecture_datetime_str(lecture: Dict[str, Any]) -> str:
     return fmt_date(lecture.get("lecture_date"))
@@ -109,9 +111,13 @@ def _build_base_embed(
         timestamp=datetime.now(timezone.utc),
     )
     embed.add_field(name="강연 제목", value=f"**{lecture['title']}**", inline=False)
-    embed.add_field(name="연사자", value=lecture.get("creator_name") or "미정", inline=True)
+    embed.add_field(
+        name="연사자", value=lecture.get("creator_name") or "미정", inline=True
+    )
     embed.add_field(name="대상자", value=lecture.get("target") or "전체", inline=True)
-    embed.add_field(name="장소", value=lecture.get("lecture_location") or "미정", inline=True)
+    embed.add_field(
+        name="장소", value=lecture.get("lecture_location") or "미정", inline=True
+    )
 
     embed.add_field(name="강연 일시", value=_lecture_datetime_str(lecture), inline=True)
     embed.add_field(
@@ -134,10 +140,10 @@ def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
     return embed
 
 
-def make_confirmed_embed(
-    lecture: Dict[str, Any], enrolled_count: int
-) -> discord.Embed:
-    desc = f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
+def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discord.Embed:
+    desc = (
+        f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
+    )
     embed = _build_base_embed("릴레이 스터디 개설 확정!", lecture, description=desc)
     embed.add_field(name="현재 인원", value=f"**{enrolled_count}명**", inline=True)
     if lecture.get("lecture_url"):
@@ -358,5 +364,3 @@ if __name__ == "__main__":
     if not DISCORD_TOKEN:
         raise RuntimeError("DISCORD_TOKEN이 .env에 설정되어 있지 않습니다.")
     bot.run(DISCORD_TOKEN)
-
-    
