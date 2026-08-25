@@ -19,13 +19,13 @@ from state_store import claim_notification, init_state_store, mark_notified
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = int(os.getenv("GUILD_ID", "1447887618317619261"))
 
 
 def _parse_id_list(env_val: str) -> List[int]:
     return [int(x.strip()) for x in env_val.split(",") if x.strip().isdigit()]
 
 
+GUILD_IDS = _parse_id_list(os.getenv("GUILD_ID", "1447887618317619261"))
 NOTIFY_CHANNEL_IDS = _parse_id_list(
     os.getenv("NOTIFY_CHANNEL_ID", "1490575679786455111,851322917932498964")
 )
@@ -142,15 +142,14 @@ def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discor
 
 
 def get_student_role_mentions() -> str:
-    guild = bot.get_guild(GUILD_ID)
-    if not guild:
-        return ""
-
     mentions = []
-    for role_id in STUDENT_ROLE_IDS:
-        role = guild.get_role(role_id)
-        if role:
-            mentions.append(role.mention)
+    for guild in bot.guilds:
+        if GUILD_IDS and guild.id not in GUILD_IDS:
+            continue
+        for role_id in STUDENT_ROLE_IDS:
+            role = guild.get_role(role_id)
+            if role and role.mention not in mentions:
+                mentions.append(role.mention)
     return " ".join(mentions)
 
 
