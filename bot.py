@@ -50,32 +50,49 @@ def fmt_date(value: Optional[Union[datetime, date, str]]) -> str:
     if not value:
         return "미정"
     if isinstance(value, (datetime, date)):
-        return value.strftime("%Y-%m-%d")
-    return str(value).replace("T", " ")
-
+        return value.strftime("%m-%d")
+    text = str(value).replace("T", " ")
+    parts = text.split("-")
+    if len(parts) >= 3:
+        return f"{parts[1]}-{parts[2][:2]}"
+    return text
 
 def fmt_time(value: Optional[Union[datetime, time, str]]) -> str:
     if not value:
-        return "미정"
+        return ""
     if isinstance(value, (datetime, time)):
         return value.strftime("%H:%M")
     text = str(value)
-    return text.split(".", 1)[0] if "." in text else text
+    parts = text.split(":")
+    if len(parts) >= 2:
+        return f"{parts[0]}:{parts[1]}"
+    return text
 
 
 def fmt_deadline(value: Optional[Union[datetime, str]]) -> str:
     if not value:
         return "미정"
     if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d %H:%M")
-    text = str(value).replace("T", " ")
+        return value.strftime("%m-%d %H:%M")
+
+    text = str(value).replace("T", " ").rstrip("Z")
     if "." in text:
         text = text.split(".", 1)[0]
-    return text.rstrip("Z")
+
+    try:
+        dt = datetime.fromisoformat(text)
+        return dt.strftime("%m-%d %H:%M")
+    except ValueError:
+        parts = text.split("-")
+        if len(parts) >= 3:
+            return f"{parts[1]}-{parts[2][:11]}"
+        return text
 
 
 def _lecture_datetime_str(lecture: Dict[str, Any]) -> str:
-    return f"{fmt_date(lecture.get('lecture_date'))} {fmt_time(lecture.get('lecture_time'))}"
+    d = fmt_date(lecture.get("lecture_date"))
+    t = fmt_time(lecture.get("lecture_time"))
+    return f"{d} {t}".strip()
 
 
 def _make_progress_bar(enrolled: int, capacity: int, width: int = 10) -> str:
@@ -94,47 +111,45 @@ def _build_base_embed(
         color=EMBED_COLOR,
         timestamp=datetime.now(timezone.utc),
     )
-    embed.add_field(name="강연 제목", value=lecture["title"], inline=False)
-    embed.add_field(name="연사자", value=lecture["creator_name"], inline=False)
+    embed.add_field(name="📌 강연 제목", value=f"**{lecture['title']}**", inline=False)
+    embed.add_field(name="🎯 대상자", value=lecture.get("target") or "전체", inline=True)
     embed.add_field(
-        name="강연 일시", value=_lecture_datetime_str(lecture), inline=False
+        name="📍 장소", value=lecture.get("lecture_location") or "미정", inline=True
+    )
+
+    embed.add_field(
+        name="📅 강연 일시", value=_lecture_datetime_str(lecture), inline=True
     )
     embed.add_field(
-        name="장소", value=lecture.get("lecture_location") or "미정", inline=False
-    )
-    embed.add_field(
-        name="신청 마감",
+        name="⏰ 신청 마감",
         value=fmt_deadline(lecture.get("application_deadline")),
-        inline=False,
+        inline=True,
     )
     return embed
 
 
 def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
-    embed = _build_base_embed("새 릴레이 스터디가 등록됐어요", lecture)
-    embed.add_field(name="대상자", value=lecture.get("target") or "전체", inline=False)
+    embed = _build_base_embed("✨ 새 릴레이 스터디가 등록됐어요!", lecture)
     if lecture.get("lecture_url"):
         embed.add_field(
-            name="신청 링크",
-            value=f"[강연 신청하기]({lecture['lecture_url']})",
+            name="🔗 신청 링크",
+            value=f"[👉 강연 신청하러 가기]({lecture['lecture_url']})",
             inline=False,
         )
     embed.set_footer(text=FOOTER_TEXT)
     return embed
 
 
-def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discord.Embed:
-    desc = (
-        f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
-    )
-    embed = _build_base_embed(
-        "릴레이 스터디 개설이 확정됐어요", lecture, description=desc
-    )
-    embed.add_field(name="현재 인원", value=f"{enrolled_count}명", inline=False)
+def make_confirmed_embed(
+    lecture: Dict[str, Any], enrolled_count: int
+) -> discord.Embed:
+    desc = f"🎉 **{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
+    embed = _build_base_embed("🔥 릴레이 스터디 개설 확정!", lecture, description=desc)
+    embed.add_field(name="👥 현재 인원", value=f"**{enrolled_count}명**", inline=True)
     if lecture.get("lecture_url"):
         embed.add_field(
-            name="신청 링크",
-            value=f"[강연 신청하기]({lecture['lecture_url']})",
+            name="🔗 신청 링크",
+            value=f"[👉 강연 신청하러 가기]({lecture['lecture_url']})",
             inline=False,
         )
     embed.set_footer(text=FOOTER_TEXT)
@@ -246,7 +261,7 @@ async def cmd_rels(ctx: commands.Context) -> None:
         display_lectures = lectures[:25]
 
         embed = discord.Embed(
-            title="📋 신청 가능한 강연",
+            title="📋 신청 가능한 강연 목록",
             color=EMBED_COLOR,
             timestamp=datetime.now(timezone.utc),
         )
@@ -257,17 +272,17 @@ async def cmd_rels(ctx: commands.Context) -> None:
 
             lines = []
             if is_confirmed:
-                lines.append("✅ 개설 확정")
+                lines.append("✅ **개설 확정**")
+            lines.append(f"📅 **일시:** {_lecture_datetime_str(lecture)}")
             lines.append(
-                f"{fmt_date(lecture.get('lecture_date'))} {fmt_time(lecture.get('lecture_time'))}"
+                f"⏰ **마감:** {fmt_deadline(lecture.get('application_deadline'))}"
             )
-            lines.append(f"마감 {fmt_deadline(lecture.get('application_deadline'))}")
-            lines.append(f"대상 {target}")
+            lines.append(f"🎯 **대상:** {target}")
             if lecture.get("lecture_url"):
                 lines.append(f"🔗 [신청하기]({lecture['lecture_url']})")
 
             embed.add_field(
-                name=f"{lecture['title']} — {lecture['creator_name']}",
+                name=f"{lecture['title']}",
                 value="\n".join(lines),
                 inline=False,
             )
@@ -293,7 +308,7 @@ async def cmd_headcount(ctx: commands.Context) -> None:
             return
 
         embed = discord.Embed(
-            title="릴레이 스터디 인원 현황",
+            title="📊 릴레이 스터디 인원 현황",
             color=EMBED_COLOR,
             timestamp=datetime.now(timezone.utc),
         )
@@ -307,12 +322,12 @@ async def cmd_headcount(ctx: commands.Context) -> None:
 
             bar = _make_progress_bar(enrolled_count, capacity)
             status_tag = (
-                "개설 확정"
+                "✅ 개설 확정"
                 if enrolled_count >= CONFIRMED_MIN
-                else f"{CONFIRMED_MIN - enrolled_count}명 더 모이면 확정"
+                else f"⏳ {CONFIRMED_MIN - enrolled_count}명 더 모이면 확정"
             )
 
-            value = f"`{bar}` {enrolled_count}/{capacity}명 | {status_tag}"
+            value = f"`{bar}` **{enrolled_count}/{capacity}명** | {status_tag}"
             embed.add_field(name=lecture["title"], value=value, inline=False)
 
         embed.set_footer(text=FOOTER_TEXT)
@@ -324,10 +339,10 @@ async def cmd_headcount(ctx: commands.Context) -> None:
 
 @bot.command(name="도움말")
 async def cmd_help(ctx: commands.Context) -> None:
-    embed = discord.Embed(title="릴스 봇 명령어 목록", color=EMBED_COLOR)
-    embed.add_field(name="!릴스", value="현재 신청 가능한 강연 목록", inline=False)
-    embed.add_field(name="!인원", value="강연별 신청 인원 현황", inline=False)
-    embed.add_field(name="!도움말", value="명령어 목록", inline=False)
+    embed = discord.Embed(title="💡 릴스 봇 명령어 목록", color=EMBED_COLOR)
+    embed.add_field(name="!릴스", value="현재 신청 가능한 강연 목록 보기", inline=False)
+    embed.add_field(name="!인원", value="강연별 신청 인원 현황 보기", inline=False)
+    embed.add_field(name="!도움말", value="명령어 안내", inline=False)
     embed.set_footer(text=FOOTER_TEXT)
     await ctx.send(embed=embed)
 
