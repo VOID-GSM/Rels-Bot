@@ -1,7 +1,7 @@
 import asyncio
 import os
 from datetime import date, datetime, time, timezone
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import discord
 from discord.ext import commands, tasks
@@ -20,8 +20,17 @@ load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "1447887618317619261"))
-NOTIFY_CHANNEL_ID = int(os.getenv("NOTIFY_CHANNEL_ID", "1490575679786455111"))
-STUDENT_ROLE_ID = int(os.getenv("STUDENT_ROLE_ID", "1490586180679368734"))
+
+def _parse_id_list(env_val: str) -> List[int]:
+    return [int(x.strip()) for x in env_val.split(",") if x.strip().isdigit()]
+
+NOTIFY_CHANNEL_IDS = _parse_id_list(
+    os.getenv("NOTIFY_CHANNEL_ID", "1490575679786455111,851322917932498964")
+)
+STUDENT_ROLE_IDS = _parse_id_list(
+    os.getenv("STUDENT_ROLE_ID", "1490586180679368734,919712218566774794")
+)
+
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "30"))
 CONFIRMED_MIN = int(os.getenv("CONFIRMED_MIN", "10"))
 
@@ -108,30 +117,36 @@ def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discor
     return embed
 
 
-def get_notify_channel() -> Optional[discord.TextChannel]:
-    return bot.get_channel(NOTIFY_CHANNEL_ID)
-
-
-def get_student_role_mention() -> str:
+def get_student_role_mentions() -> str:
     guild = bot.get_guild(GUILD_ID)
     if not guild:
         return ""
-    role = guild.get_role(STUDENT_ROLE_ID)
-    return role.mention if role else ""
+    
+    mentions = []
+    for role_id in STUDENT_ROLE_IDS:
+        role = guild.get_role(role_id)
+        if role:
+            mentions.append(role.mention)
+    return " ".join(mentions)
 
 
 def is_confirmed_lecture(lecture: Dict[str, Any], enrolled_count: int) -> bool:
     return lecture.get("status") in CONFIRMED_STATUSES or enrolled_count >= CONFIRMED_MIN
 
 
+async def send_to_all_notify_channels(content: str, embed: discord.Embed) -> None:
+    for channel_id in NOTIFY_CHANNEL_IDS:
+        channel = bot.get_channel(channel_id)
+        if channel:
+            try:
+                await channel.send(content=content, embed=embed)
+            except Exception as e:
+                print(f"[전송 에러] 채널 {channel_id}로 메시지 전송 실패: {e}")
+
+
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api() -> None:
-    channel = get_notify_channel()
-    if channel is None:
-        print(f"[경고] 알림 채널(ID: {NOTIFY_CHANNEL_ID})을 찾을 수 없습니다.")
-        return
-
-    role_mention = get_student_role_mention()
+    role_mentions = get_student_role_mentions()
 
     try:
         lectures = fetch_open_lectures()
@@ -144,19 +159,15 @@ async def poll_api() -> None:
             if lecture.get("status") == "OPEN" and claim_notification(
                 lecture_id, "new", lecture["title"]
             ):
-                await channel.send(
-                    content=f"{role_mention} 새 릴레이 스터디가 등록됐어요!",
-                    embed=make_new_lecture_embed(lecture),
-                )
+                content = f"{role_mentions} 새 릴레이 스터디가 등록됐어요!".strip()
+                await send_to_all_notify_channels(content, make_new_lecture_embed(lecture))
                 await asyncio.sleep(0.5)
 
             if is_confirmed_lecture(lecture, enrolled_count) and claim_notification(
                 lecture_id, "confirmed", lecture["title"]
             ):
-                await channel.send(
-                    content=f"{role_mention} 릴레이 스터디 개설이 확정됐어요!",
-                    embed=make_confirmed_embed(lecture, enrolled_count),
-                )
+                content = f"{role_mentions} 릴레이 스터디 개설이 확정됐어요!".strip()
+                await send_to_all_notify_channels(content, make_confirmed_embed(lecture, enrolled_count))
                 await asyncio.sleep(0.5)
 
     except ApiError as exc:
