@@ -85,7 +85,9 @@ def _make_progress_bar(enrolled: int, capacity: int, width: int = 10) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
-def _build_base_embed(title: str, lecture: Dict[str, Any], description: Optional[str] = None) -> discord.Embed:
+def _build_base_embed(
+    title: str, lecture: Dict[str, Any], description: Optional[str] = None
+) -> discord.Embed:
     embed = discord.Embed(
         title=title,
         description=description,
@@ -94,9 +96,17 @@ def _build_base_embed(title: str, lecture: Dict[str, Any], description: Optional
     )
     embed.add_field(name="강연 제목", value=lecture["title"], inline=False)
     embed.add_field(name="연사자", value=lecture["creator_name"], inline=False)
-    embed.add_field(name="강연 일시", value=_lecture_datetime_str(lecture), inline=False)
-    embed.add_field(name="장소", value=lecture.get("lecture_location") or "미정", inline=False)
-    embed.add_field(name="신청 마감", value=fmt_deadline(lecture.get("application_deadline")), inline=False)
+    embed.add_field(
+        name="강연 일시", value=_lecture_datetime_str(lecture), inline=False
+    )
+    embed.add_field(
+        name="장소", value=lecture.get("lecture_location") or "미정", inline=False
+    )
+    embed.add_field(
+        name="신청 마감",
+        value=fmt_deadline(lecture.get("application_deadline")),
+        inline=False,
+    )
     return embed
 
 
@@ -104,17 +114,29 @@ def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
     embed = _build_base_embed("새 릴레이 스터디가 등록됐어요", lecture)
     embed.add_field(name="대상자", value=lecture.get("target") or "전체", inline=False)
     if lecture.get("lecture_url"):
-        embed.add_field(name="신청 링크", value=f"[강연 신청하기]({lecture['lecture_url']})", inline=False)
+        embed.add_field(
+            name="신청 링크",
+            value=f"[강연 신청하기]({lecture['lecture_url']})",
+            inline=False,
+        )
     embed.set_footer(text=FOOTER_TEXT)
     return embed
 
 
 def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discord.Embed:
-    desc = f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
-    embed = _build_base_embed("릴레이 스터디 개설이 확정됐어요", lecture, description=desc)
+    desc = (
+        f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
+    )
+    embed = _build_base_embed(
+        "릴레이 스터디 개설이 확정됐어요", lecture, description=desc
+    )
     embed.add_field(name="현재 인원", value=f"{enrolled_count}명", inline=False)
     if lecture.get("lecture_url"):
-        embed.add_field(name="신청 링크", value=f"[강연 신청하기]({lecture['lecture_url']})", inline=False)
+        embed.add_field(
+            name="신청 링크",
+            value=f"[강연 신청하기]({lecture['lecture_url']})",
+            inline=False,
+        )
     embed.set_footer(text=FOOTER_TEXT)
     return embed
 
@@ -133,7 +155,9 @@ def get_student_role_mentions() -> str:
 
 
 def is_confirmed_lecture(lecture: Dict[str, Any], enrolled_count: int) -> bool:
-    return lecture.get("status") in CONFIRMED_STATUSES or enrolled_count >= CONFIRMED_MIN
+    return (
+        lecture.get("status") in CONFIRMED_STATUSES or enrolled_count >= CONFIRMED_MIN
+    )
 
 
 async def send_to_all_notify_channels(content: str, embed: discord.Embed) -> None:
@@ -156,20 +180,26 @@ async def poll_api() -> None:
 
         for lecture in lectures:
             lecture_id = lecture["id"]
-            enrolled_count = int(enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0)
+            enrolled_count = int(
+                enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0
+            )
 
             if lecture.get("status") == "OPEN" and claim_notification(
                 lecture_id, "new", lecture["title"]
             ):
                 content = f"{role_mentions} 새 릴레이 스터디가 등록됐어요!".strip()
-                await send_to_all_notify_channels(content, make_new_lecture_embed(lecture))
+                await send_to_all_notify_channels(
+                    content, make_new_lecture_embed(lecture)
+                )
                 await asyncio.sleep(0.5)
 
             if is_confirmed_lecture(lecture, enrolled_count) and claim_notification(
                 lecture_id, "confirmed", lecture["title"]
             ):
                 content = f"{role_mentions} 릴레이 스터디 개설이 확정됐어요!".strip()
-                await send_to_all_notify_channels(content, make_confirmed_embed(lecture, enrolled_count))
+                await send_to_all_notify_channels(
+                    content, make_confirmed_embed(lecture, enrolled_count)
+                )
                 await asyncio.sleep(0.5)
 
     except ApiError as exc:
@@ -189,7 +219,9 @@ async def before_poll() -> None:
 
         for lecture in lectures:
             lecture_id = lecture["id"]
-            enrolled_count = int(enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0)
+            enrolled_count = int(
+                enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0
+            )
 
             if lecture.get("status") == "OPEN":
                 mark_notified(lecture_id, "new", lecture["title"])
@@ -227,7 +259,9 @@ async def cmd_rels(ctx: commands.Context) -> None:
             lines = []
             if is_confirmed:
                 lines.append("✅ 개설 확정")
-            lines.append(f"{fmt_date(lecture.get('lecture_date'))} {fmt_time(lecture.get('lecture_time'))}")
+            lines.append(
+                f"{fmt_date(lecture.get('lecture_date'))} {fmt_time(lecture.get('lecture_time'))}"
+            )
             lines.append(f"마감 {fmt_deadline(lecture.get('application_deadline'))}")
             lines.append(f"대상 {target}")
             if lecture.get("lecture_url"):
@@ -239,7 +273,9 @@ async def cmd_rels(ctx: commands.Context) -> None:
                 inline=False,
             )
 
-        footer_note = " • 25개 이상의 강연 중 상위 25개만 표시됨" if len(lectures) > 25 else ""
+        footer_note = (
+            " • 25개 이상의 강연 중 상위 25개만 표시됨" if len(lectures) > 25 else ""
+        )
         embed.set_footer(text=f"{FOOTER_TEXT}{footer_note}")
         await ctx.send(embed=embed)
 
@@ -265,12 +301,16 @@ async def cmd_headcount(ctx: commands.Context) -> None:
 
         for lecture in lectures:
             lecture_id = lecture["id"]
-            enrolled_count = int(enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0)
+            enrolled_count = int(
+                enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0
+            )
             capacity = int(lecture.get("total_capacity") or (CONFIRMED_MIN * 3))
 
             bar = _make_progress_bar(enrolled_count, capacity)
             status_tag = (
-                "개설 확정" if enrolled_count >= CONFIRMED_MIN else f"{CONFIRMED_MIN - enrolled_count}명 더 모이면 확정"
+                "개설 확정"
+                if enrolled_count >= CONFIRMED_MIN
+                else f"{CONFIRMED_MIN - enrolled_count}명 더 모이면 확정"
             )
 
             value = f"`{bar}` {enrolled_count}/{capacity}명 | {status_tag}"
@@ -312,4 +352,3 @@ if __name__ == "__main__":
     if not DISCORD_TOKEN:
         raise RuntimeError("DISCORD_TOKEN이 .env에 설정되어 있지 않습니다.")
     bot.run(DISCORD_TOKEN)
-    
