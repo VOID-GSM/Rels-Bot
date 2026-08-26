@@ -4,6 +4,7 @@ from datetime import date, datetime, time, timezone
 from typing import Any, Dict, List, Optional, Union
 
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
@@ -25,8 +26,11 @@ def _parse_id_list(env_val: str) -> List[int]:
     return [int(x.strip()) for x in env_val.split(",") if x.strip().isdigit()]
 
 
+GUILD_IDS = _parse_id_list(os.getenv("GUILD_ID", "1447887618317619261"))
+
+
 def _parse_channel_role_map(env_val: str) -> Dict[int, int]:
-    """ "채널ID:역할ID,채널ID:역할ID" 형식 문자열을 파싱해 {채널ID: 역할ID} 매핑을 만든다."""
+    """"채널ID:역할ID,채널ID:역할ID" 형식 문자열을 파싱해 {채널ID: 역할ID} 매핑을 만든다."""
     mapping: Dict[int, int] = {}
     for pair in env_val.split(","):
         pair = pair.strip()
@@ -38,7 +42,6 @@ def _parse_channel_role_map(env_val: str) -> Dict[int, int]:
         if channel_str.isdigit() and role_str.isdigit():
             mapping[int(channel_str)] = int(role_str)
     return mapping
-
 
 NOTIFY_CHANNEL_ROLE_MAP: Dict[int, int] = _parse_channel_role_map(
     os.getenv(
@@ -127,13 +130,9 @@ def _build_base_embed(
         timestamp=datetime.now(timezone.utc),
     )
     embed.add_field(name="강연 제목", value=f"**{lecture['title']}**", inline=False)
-    embed.add_field(
-        name="연사자", value=lecture.get("creator_name") or "미정", inline=True
-    )
+    embed.add_field(name="연사자", value=lecture.get("creator_name") or "미정", inline=True)
     embed.add_field(name="대상자", value=lecture.get("target") or "전체", inline=True)
-    embed.add_field(
-        name="장소", value=lecture.get("lecture_location") or "미정", inline=True
-    )
+    embed.add_field(name="장소", value=lecture.get("lecture_location") or "미정", inline=True)
 
     embed.add_field(name="강연 일시", value=_lecture_datetime_str(lecture), inline=True)
     embed.add_field(
@@ -156,10 +155,10 @@ def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
     return embed
 
 
-def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discord.Embed:
-    desc = (
-        f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
-    )
+def make_confirmed_embed(
+    lecture: Dict[str, Any], enrolled_count: int
+) -> discord.Embed:
+    desc = f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
     embed = _build_base_embed("릴레이 스터디 개설 확정!", lecture, description=desc)
     embed.add_field(name="현재 인원", value=f"**{enrolled_count}명**", inline=True)
     if lecture.get("lecture_url"):
@@ -173,7 +172,6 @@ def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discor
 
 
 def _get_channel_mention(channel_id: int) -> str:
-    """채널이 속한 길드 안에서 해당 채널에 매핑된 역할만 멘션 문자열로 반환한다."""
     role_id = NOTIFY_CHANNEL_ROLE_MAP.get(channel_id)
     if not role_id:
         return ""
@@ -204,9 +202,7 @@ async def send_to_all_notify_channels(message: str, embed: discord.Embed) -> Non
             except Exception as e:
                 print(f"[전송 에러] 채널 {channel_id}로 메시지 전송 실패: {e}")
         else:
-            print(
-                f"[채널 없음] {channel_id} — 봇이 이 채널을 못 찾음(권한/캐시 확인 필요)"
-            )
+            print(f"[채널 없음] {channel_id} — 봇이 이 채널을 못 찾음(권한/캐시 확인 필요)")
 
 
 @tasks.loop(seconds=POLL_INTERVAL)
@@ -271,13 +267,13 @@ async def before_poll() -> None:
         print(f"[초기화 오류] {type(exc).__name__}: {exc}")
 
 
-@bot.command(name="릴스")
-async def cmd_rels(ctx: commands.Context) -> None:
+@bot.tree.command(name="릴스", description="현재 신청 가능한 강연 목록 보기")
+async def cmd_rels(interaction: discord.Interaction) -> None:
     try:
         lectures = fetch_active_lectures()
 
         if not lectures:
-            await ctx.send("현재 신청 가능한 강연이 없어요.")
+            await interaction.response.send_message("현재 신청 가능한 강연이 없어요.")
             return
 
         display_lectures = lectures[:25]
@@ -312,20 +308,20 @@ async def cmd_rels(ctx: commands.Context) -> None:
             " • 25개 이상의 강연 중 상위 25개만 표시됨" if len(lectures) > 25 else ""
         )
         embed.set_footer(text=f"{FOOTER_TEXT}{footer_note}")
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
     except Exception as exc:
-        await ctx.send(f"오류가 발생했어요: {exc}")
+        await interaction.response.send_message(f"오류가 발생했어요: {exc}")
 
 
-@bot.command(name="인원")
-async def cmd_headcount(ctx: commands.Context) -> None:
+@bot.tree.command(name="인원", description="강연별 신청 인원 현황 보기")
+async def cmd_headcount(interaction: discord.Interaction) -> None:
     try:
         lectures = fetch_all_lectures_basic()
         enroll_map = fetch_enrollment_counts(lectures)
 
         if not lectures:
-            await ctx.send("현재 진행 중인 강연이 없어요.")
+            await interaction.response.send_message("현재 진행 중인 강연이 없어요.")
             return
 
         embed = discord.Embed(
@@ -352,20 +348,20 @@ async def cmd_headcount(ctx: commands.Context) -> None:
             embed.add_field(name=lecture["title"], value=value, inline=False)
 
         embed.set_footer(text=FOOTER_TEXT)
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
     except Exception as exc:
-        await ctx.send(f"오류가 발생했어요: {exc}")
+        await interaction.response.send_message(f"오류가 발생했어요: {exc}")
 
 
-@bot.command(name="도움말")
-async def cmd_help(ctx: commands.Context) -> None:
+@bot.tree.command(name="도움말", description="명령어 안내")
+async def cmd_help(interaction: discord.Interaction) -> None:
     embed = discord.Embed(title="릴스 봇 명령어 목록", color=EMBED_COLOR)
-    embed.add_field(name="!릴스", value="현재 신청 가능한 강연 목록 보기", inline=False)
-    embed.add_field(name="!인원", value="강연별 신청 인원 현황 보기", inline=False)
-    embed.add_field(name="!도움말", value="명령어 안내", inline=False)
+    embed.add_field(name="/릴스", value="현재 신청 가능한 강연 목록 보기", inline=False)
+    embed.add_field(name="/인원", value="강연별 신청 인원 현황 보기", inline=False)
+    embed.add_field(name="/도움말", value="명령어 안내", inline=False)
     embed.set_footer(text=FOOTER_TEXT)
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
 @bot.event
@@ -374,13 +370,30 @@ async def on_ready() -> None:
     if not poll_api.is_running():
         poll_api.start()
 
+    try:
+        if GUILD_IDS:
+            for guild_id in GUILD_IDS:
+                guild_obj = discord.Object(id=guild_id)
+                bot.tree.copy_global_to(guild=guild_obj)
+                synced = await bot.tree.sync(guild=guild_obj)
+                print(f"[슬래시 동기화] 길드 {guild_id}: {len(synced)}개 명령어 동기화 완료")
+        else:
+            synced = await bot.tree.sync()
+            print(f"[슬래시 동기화] 전역: {len(synced)}개 명령어 동기화 완료 (반영까지 최대 1시간 소요될 수 있음)")
+    except Exception as e:
+        print(f"[슬래시 동기화 오류] {e}")
 
-@bot.event
-async def on_command_error(ctx: commands.Context, error: Exception) -> None:
-    if isinstance(error, commands.CommandNotFound):
-        await ctx.send("없는 명령어예요. `!도움말`로 명령어 목록을 확인해보세요!")
+
+@bot.tree.error
+async def on_app_command_error(
+    interaction: discord.Interaction, error: app_commands.AppCommandError
+) -> None:
+    print(f"[명령어 오류] {error}")
+    message = "명령어 실행 중 오류가 발생했어요."
+    if interaction.response.is_done():
+        await interaction.followup.send(message, ephemeral=True)
     else:
-        raise error
+        await interaction.response.send_message(message, ephemeral=True)
 
 
 if __name__ == "__main__":
