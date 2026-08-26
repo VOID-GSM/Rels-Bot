@@ -25,12 +25,28 @@ def _parse_id_list(env_val: str) -> List[int]:
     return [int(x.strip()) for x in env_val.split(",") if x.strip().isdigit()]
 
 
-GUILD_IDS = _parse_id_list(os.getenv("GUILD_ID", "1447887618317619261"))
-NOTIFY_CHANNEL_IDS = _parse_id_list(
-    os.getenv("NOTIFY_CHANNEL_ID", "1490575679786455111,851322917932498964")
-)
-STUDENT_ROLE_IDS = _parse_id_list(
-    os.getenv("STUDENT_ROLE_ID", "1490586180679368734,919712218566774794")
+def _parse_channel_role_map(env_val: str) -> Dict[int, int]:
+    """ "채널ID:역할ID,채널ID:역할ID" 형식 문자열을 파싱해 {채널ID: 역할ID} 매핑을 만든다."""
+    mapping: Dict[int, int] = {}
+    for pair in env_val.split(","):
+        pair = pair.strip()
+        if not pair or ":" not in pair:
+            continue
+        channel_str, role_str = pair.split(":", 1)
+        channel_str = channel_str.strip()
+        role_str = role_str.strip()
+        if channel_str.isdigit() and role_str.isdigit():
+            mapping[int(channel_str)] = int(role_str)
+    return mapping
+
+
+NOTIFY_CHANNEL_ROLE_MAP: Dict[int, int] = _parse_channel_role_map(
+    os.getenv(
+        "NOTIFY_CHANNEL_ROLE_MAP",
+        "1490575679786455111:1490586180679368734,"
+        "748827810528755772:919712218566774794,"
+        "851322917932498964:919712218566774794",
+    )
 )
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "30"))
@@ -129,11 +145,11 @@ def _build_base_embed(
 
 
 def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
-    embed = _build_base_embed("✨새 릴레이 스터디가 등록됐어요!", lecture)
+    embed = _build_base_embed("새 릴레이 스터디가 등록됐어요!", lecture)
     if lecture.get("lecture_url"):
         embed.add_field(
             name="신청 링크",
-            value=f"👉[강연 신청하러 가기]({lecture['lecture_url']})",
+            value=f"[강연 신청하러 가기]({lecture['lecture_url']})",
             inline=False,
         )
     embed.set_footer(text=FOOTER_TEXT)
@@ -156,16 +172,19 @@ def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discor
     return embed
 
 
-def get_student_role_mentions() -> str:
-    mentions = []
-    for guild in bot.guilds:
-        if GUILD_IDS and guild.id not in GUILD_IDS:
-            continue
-        for role_id in STUDENT_ROLE_IDS:
-            role = guild.get_role(role_id)
-            if role and role.mention not in mentions:
-                mentions.append(role.mention)
-    return " ".join(mentions)
+def _get_channel_mention(channel_id: int) -> str:
+    """채널이 속한 길드 안에서 해당 채널에 매핑된 역할만 멘션 문자열로 반환한다."""
+    role_id = NOTIFY_CHANNEL_ROLE_MAP.get(channel_id)
+    if not role_id:
+        return ""
+
+    channel = bot.get_channel(channel_id)
+    if channel is not None and getattr(channel, "guild", None) is not None:
+        role = channel.guild.get_role(role_id)
+        if role:
+            return role.mention
+
+    return f"<@&{role_id}>"
 
 
 def is_confirmed_lecture(lecture: Dict[str, Any], enrolled_count: int) -> bool:
@@ -174,20 +193,24 @@ def is_confirmed_lecture(lecture: Dict[str, Any], enrolled_count: int) -> bool:
     )
 
 
-async def send_to_all_notify_channels(content: str, embed: discord.Embed) -> None:
-    for channel_id in NOTIFY_CHANNEL_IDS:
+async def send_to_all_notify_channels(message: str, embed: discord.Embed) -> None:
+    for channel_id in NOTIFY_CHANNEL_ROLE_MAP:
         channel = bot.get_channel(channel_id)
         if channel:
+            mention = _get_channel_mention(channel_id)
+            content = f"{mention} {message}".strip()
             try:
                 await channel.send(content=content, embed=embed)
             except Exception as e:
                 print(f"[전송 에러] 채널 {channel_id}로 메시지 전송 실패: {e}")
+        else:
+            print(
+                f"[채널 없음] {channel_id} — 봇이 이 채널을 못 찾음(권한/캐시 확인 필요)"
+            )
 
 
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api() -> None:
-    role_mentions = get_student_role_mentions()
-
     try:
         lectures = fetch_open_lectures()
         enroll_map = fetch_enrollment_counts(lectures)
@@ -201,18 +224,17 @@ async def poll_api() -> None:
             if lecture.get("status") == "OPEN" and claim_notification(
                 lecture_id, "new", lecture["title"]
             ):
-                content = f"{role_mentions} 새 릴레이 스터디가 등록됐어요!".strip()
                 await send_to_all_notify_channels(
-                    content, make_new_lecture_embed(lecture)
+                    "새 릴레이 스터디가 등록됐어요!", make_new_lecture_embed(lecture)
                 )
                 await asyncio.sleep(0.5)
 
             if is_confirmed_lecture(lecture, enrolled_count) and claim_notification(
                 lecture_id, "confirmed", lecture["title"]
             ):
-                content = f"{role_mentions} 릴레이 스터디 개설이 확정됐어요!".strip()
                 await send_to_all_notify_channels(
-                    content, make_confirmed_embed(lecture, enrolled_count)
+                    "릴레이 스터디 개설이 확정됐어요!",
+                    make_confirmed_embed(lecture, enrolled_count),
                 )
                 await asyncio.sleep(0.5)
 
@@ -273,6 +295,7 @@ async def cmd_rels(ctx: commands.Context) -> None:
             lines = []
             if is_confirmed:
                 lines.append("**개설 확정**")
+            lines.append(f"연사자: {lecture.get('creator_name') or '미정'}")
             lines.append(f"일시: {_lecture_datetime_str(lecture)}")
             lines.append(f"마감: {fmt_deadline(lecture.get('application_deadline'))}")
             lines.append(f"대상: {target}")
