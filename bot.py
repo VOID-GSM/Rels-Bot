@@ -25,12 +25,10 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 def _parse_id_list(env_val: str) -> List[int]:
     return [int(x.strip()) for x in env_val.split(",") if x.strip().isdigit()]
 
-
 GUILD_IDS = _parse_id_list(os.getenv("GUILD_ID", "1447887618317619261"))
 
 
 def _parse_channel_role_map(env_val: str) -> Dict[int, int]:
-    """ "채널ID:역할ID,채널ID:역할ID" 형식 문자열을 파싱해 {채널ID: 역할ID} 매핑을 만든다."""
     mapping: Dict[int, int] = {}
     for pair in env_val.split(","):
         pair = pair.strip()
@@ -76,7 +74,6 @@ def fmt_date(value: Optional[Union[datetime, date, str]]) -> str:
     if len(parts) >= 3:
         return f"{parts[1]}-{parts[2][:2]}"
     return text
-
 
 def fmt_time(value: Optional[Union[datetime, time, str]]) -> str:
     if not value:
@@ -131,13 +128,9 @@ def _build_base_embed(
         timestamp=datetime.now(timezone.utc),
     )
     embed.add_field(name="강연 제목", value=f"**{lecture['title']}**", inline=False)
-    embed.add_field(
-        name="연사자", value=lecture.get("creator_name") or "미정", inline=True
-    )
+    embed.add_field(name="연사자", value=lecture.get("creator_name") or "미정", inline=True)
     embed.add_field(name="대상자", value=lecture.get("target") or "전체", inline=True)
-    embed.add_field(
-        name="장소", value=lecture.get("lecture_location") or "미정", inline=True
-    )
+    embed.add_field(name="장소", value=lecture.get("lecture_location") or "미정", inline=True)
 
     embed.add_field(name="강연 일시", value=_lecture_datetime_str(lecture), inline=True)
     embed.add_field(
@@ -149,27 +142,27 @@ def _build_base_embed(
 
 
 def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
-    embed = _build_base_embed("새 릴레이 스터디가 등록됐어요!", lecture)
+    embed = _build_base_embed("✨새 릴레이 스터디가 등록됐어요!", lecture)
     if lecture.get("lecture_url"):
         embed.add_field(
             name="신청 링크",
-            value=f"[강연 신청하러 가기]({lecture['lecture_url']})",
+            value=f"👉[강연 신청하러 가기]({lecture['lecture_url']})",
             inline=False,
         )
     embed.set_footer(text=FOOTER_TEXT)
     return embed
 
 
-def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discord.Embed:
-    desc = (
-        f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
-    )
-    embed = _build_base_embed("릴레이 스터디 개설 확정!", lecture, description=desc)
+def make_confirmed_embed(
+    lecture: Dict[str, Any], enrolled_count: int
+) -> discord.Embed:
+    desc = f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
+    embed = _build_base_embed("✅릴레이 스터디 개설 확정!", lecture, description=desc)
     embed.add_field(name="현재 인원", value=f"**{enrolled_count}명**", inline=True)
     if lecture.get("lecture_url"):
         embed.add_field(
             name="신청 링크",
-            value=f"[강연 신청하러 가기]({lecture['lecture_url']})",
+            value=f"👉[강연 신청하러 가기]({lecture['lecture_url']})",
             inline=False,
         )
     embed.set_footer(text=FOOTER_TEXT)
@@ -207,9 +200,7 @@ async def send_to_all_notify_channels(message: str, embed: discord.Embed) -> Non
             except Exception as e:
                 print(f"[전송 에러] 채널 {channel_id}로 메시지 전송 실패: {e}")
         else:
-            print(
-                f"[채널 없음] {channel_id} — 봇이 이 채널을 못 찾음(권한/캐시 확인 필요)"
-            )
+            print(f"[채널 없음] {channel_id} — 봇이 이 채널을 못 찾음(권한/캐시 확인 필요)")
 
 
 @tasks.loop(seconds=POLL_INTERVAL)
@@ -291,7 +282,7 @@ async def cmd_rels(interaction: discord.Interaction) -> None:
             timestamp=datetime.now(timezone.utc),
         )
 
-        for lecture in display_lectures:
+        for idx, lecture in enumerate(display_lectures):
             target = lecture.get("target") or "전체"
             is_confirmed = lecture.get("status") in CONFIRMED_STATUSES
 
@@ -303,13 +294,18 @@ async def cmd_rels(interaction: discord.Interaction) -> None:
             lines.append(f"마감: {fmt_deadline(lecture.get('application_deadline'))}")
             lines.append(f"대상: {target}")
             if lecture.get("lecture_url"):
-                lines.append(f"[신청하기]({lecture['lecture_url']})")
+                lines.append(f"🔗 [신청하기]({lecture['lecture_url']})")
+
+            value = "\n".join(f"> {line}" for line in lines)
 
             embed.add_field(
-                name=f"{lecture['title']}",
-                value="\n".join(lines),
+                name=f"**{lecture['title']}**",
+                value=value,
                 inline=False,
             )
+
+            if idx != len(display_lectures) - 1:
+                embed.add_field(name="\u200b", value="┈" * 20, inline=False)
 
         footer_note = (
             " • 25개 이상의 강연 중 상위 25개만 표시됨" if len(lectures) > 25 else ""
@@ -383,14 +379,10 @@ async def on_ready() -> None:
                 guild_obj = discord.Object(id=guild_id)
                 bot.tree.copy_global_to(guild=guild_obj)
                 synced = await bot.tree.sync(guild=guild_obj)
-                print(
-                    f"[슬래시 동기화] 길드 {guild_id}: {len(synced)}개 명령어 동기화 완료"
-                )
+                print(f"[슬래시 동기화] 길드 {guild_id}: {len(synced)}개 명령어 동기화 완료")
         else:
             synced = await bot.tree.sync()
-            print(
-                f"[슬래시 동기화] 전역: {len(synced)}개 명령어 동기화 완료 (반영까지 최대 1시간 소요될 수 있음)"
-            )
+            print(f"[슬래시 동기화] 전역: {len(synced)}개 명령어 동기화 완료 (반영까지 최대 1시간 소요될 수 있음)")
     except Exception as e:
         print(f"[슬래시 동기화 오류] {e}")
 
