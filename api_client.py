@@ -15,7 +15,10 @@ LECTURES_API_URL = os.getenv(
     "https://rels.io.kr/api/lectures/discord",
 )
 PAGE_SIZE = int(os.getenv("LECTURES_PAGE_SIZE", "100"))
-LECTURE_BASE_URL = os.getenv("LECTURE_BASE_URL", "https://rels.io.kr/lectures")
+
+LECTURE_BASE_URL = (
+    os.getenv("LECTURE_BASE_URL", "https://rels.io.kr/lectures").strip().rstrip("/")
+)
 
 OPEN_STATUSES = {"OPEN", "CONFIRMED", "CONFIRM"}
 
@@ -105,29 +108,32 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
         return None
 
 
-def _format_target(capacity_by_grade: Any) -> str:
+def _extract_target_grades(capacity_by_grade: Any) -> List[int]:
     if not isinstance(capacity_by_grade, dict) or not capacity_by_grade:
-        return "전체"
+        return []
 
-    grades = []
+    grades: List[int] = []
     for grade, capacity in capacity_by_grade.items():
         try:
             if int(capacity or 0) > 0:
-                grades.append(str(grade))
+                grades.append(int(grade))
         except (TypeError, ValueError):
             continue
 
-    if not grades:
-        return "전체"
+    return sorted(grades)
 
-    grades.sort(key=lambda g: int(g) if g.isdigit() else g)
-    return ", ".join(f"{grade}학년" for grade in grades)
+
+def _format_target(target_grades: List[int]) -> str:
+    if not target_grades:
+        return "전체"
+    return ", ".join(f"{grade}학년" for grade in target_grades)
 
 
 def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
     capacity_by_grade = (
         _first(raw, "capacityByGrade", "capacity_by_grade", default={}) or {}
     )
+    target_grades = _extract_target_grades(capacity_by_grade)
 
     try:
         enrolled_count = int(
@@ -178,7 +184,8 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
         "creator_name": _first(
             raw, "creatorName", "creator_name", "speakerName", "speaker", default="미정"
         ),
-        "target": _format_target(capacity_by_grade),
+        "target": _format_target(target_grades),
+        "target_grades": target_grades,
         "enrolled_count": enrolled_count,
         "lecture_url": f"{LECTURE_BASE_URL}/{url_id}" if url_id else None,
     }

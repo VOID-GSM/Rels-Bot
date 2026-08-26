@@ -30,7 +30,6 @@ GUILD_IDS = _parse_id_list(os.getenv("GUILD_ID", "1447887618317619261"))
 
 
 def _parse_channel_role_map(env_val: str) -> Dict[int, int]:
-    """ "채널ID:역할ID,채널ID:역할ID" 형식 문자열을 파싱해 {채널ID: 역할ID} 매핑을 만든다."""
     mapping: Dict[int, int] = {}
     for pair in env_val.split(","):
         pair = pair.strip()
@@ -44,14 +43,24 @@ def _parse_channel_role_map(env_val: str) -> Dict[int, int]:
     return mapping
 
 
-NOTIFY_CHANNEL_ROLE_MAP: Dict[int, int] = _parse_channel_role_map(
+STATIC_NOTIFY_CHANNEL_ROLE_MAP: Dict[int, int] = _parse_channel_role_map(
     os.getenv(
-        "NOTIFY_CHANNEL_ROLE_MAP",
-        "1490575679786455111:1490586180679368734,"
-        "748827810528755772:919712218566774794,"
-        "851322917932498964:919712218566774794",
+        "STATIC_NOTIFY_CHANNEL_ROLE_MAP",
+        "1490575679786455111:1490586180679368734",
     )
 )
+
+GRADE_AWARE_NOTIFY_CHANNEL_IDS: List[int] = _parse_id_list(
+    os.getenv(
+        "GRADE_AWARE_NOTIFY_CHANNEL_IDS",
+        "748827810528755772,1541959305358475325",
+    )
+)
+
+GRADE_ROLE_MAP: Dict[int, int] = {
+    1: int(os.getenv("GRADE1_ROLE_ID", "1079992043805360170")),
+    2: int(os.getenv("GRADE2_ROLE_ID", "1334466986419163187")),
+}
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "30"))
 CONFIRMED_MIN = int(os.getenv("CONFIRMED_MIN", "10"))
@@ -149,11 +158,11 @@ def _build_base_embed(
 
 
 def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
-    embed = _build_base_embed("새 릴레이 스터디가 등록됐어요!", lecture)
+    embed = _build_base_embed("✨새 릴레이 스터디가 등록됐어요!", lecture)
     if lecture.get("lecture_url"):
         embed.add_field(
             name="신청 링크",
-            value=f"[강연 신청하러 가기]({lecture['lecture_url']})",
+            value=f"👉[강연 신청하러 가기]({lecture['lecture_url']})",
             inline=False,
         )
     embed.set_footer(text=FOOTER_TEXT)
@@ -164,20 +173,20 @@ def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discor
     desc = (
         f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
     )
-    embed = _build_base_embed("릴레이 스터디 개설 확정!", lecture, description=desc)
+    embed = _build_base_embed("✅릴레이 스터디 개설 확정!", lecture, description=desc)
     embed.add_field(name="현재 인원", value=f"**{enrolled_count}명**", inline=True)
     if lecture.get("lecture_url"):
         embed.add_field(
             name="신청 링크",
-            value=f"[강연 신청하러 가기]({lecture['lecture_url']})",
+            value=f"👉[강연 신청하러 가기]({lecture['lecture_url']})",
             inline=False,
         )
     embed.set_footer(text=FOOTER_TEXT)
     return embed
 
 
-def _get_channel_mention(channel_id: int) -> str:
-    role_id = NOTIFY_CHANNEL_ROLE_MAP.get(channel_id)
+def _get_static_channel_mention(channel_id: int) -> str:
+    role_id = STATIC_NOTIFY_CHANNEL_ROLE_MAP.get(channel_id)
     if not role_id:
         return ""
 
@@ -190,17 +199,48 @@ def _get_channel_mention(channel_id: int) -> str:
     return f"<@&{role_id}>"
 
 
+def _grade_role_ids_for_lecture(lecture: Dict[str, Any]) -> List[int]:
+    target_grades = lecture.get("target_grades") or []
+    if not target_grades:
+        return [GRADE_ROLE_MAP[1], GRADE_ROLE_MAP[2]]
+    return [GRADE_ROLE_MAP[grade] for grade in target_grades if grade in GRADE_ROLE_MAP]
+
+
+def _get_grade_channel_mention(channel_id: int, lecture: Dict[str, Any]) -> str:
+    role_ids = _grade_role_ids_for_lecture(lecture)
+    if not role_ids:
+        return ""
+
+    channel = bot.get_channel(channel_id)
+    guild = getattr(channel, "guild", None) if channel is not None else None
+
+    mentions = []
+    for role_id in role_ids:
+        role = guild.get_role(role_id) if guild is not None else None
+        mentions.append(role.mention if role else f"<@&{role_id}>")
+    return " ".join(mentions)
+
+
 def is_confirmed_lecture(lecture: Dict[str, Any], enrolled_count: int) -> bool:
     return (
         lecture.get("status") in CONFIRMED_STATUSES or enrolled_count >= CONFIRMED_MIN
     )
 
 
-async def send_to_all_notify_channels(message: str, embed: discord.Embed) -> None:
-    for channel_id in NOTIFY_CHANNEL_ROLE_MAP:
+async def send_to_all_notify_channels(
+    lecture: Dict[str, Any], message: str, embed: discord.Embed
+) -> None:
+    channel_ids = set(STATIC_NOTIFY_CHANNEL_ROLE_MAP) | set(
+        GRADE_AWARE_NOTIFY_CHANNEL_IDS
+    )
+
+    for channel_id in channel_ids:
         channel = bot.get_channel(channel_id)
         if channel:
-            mention = _get_channel_mention(channel_id)
+            if channel_id in GRADE_AWARE_NOTIFY_CHANNEL_IDS:
+                mention = _get_grade_channel_mention(channel_id, lecture)
+            else:
+                mention = _get_static_channel_mention(channel_id)
             content = f"{mention} {message}".strip()
             try:
                 await channel.send(content=content, embed=embed)
@@ -228,7 +268,9 @@ async def poll_api() -> None:
                 lecture_id, "new", lecture["title"]
             ):
                 await send_to_all_notify_channels(
-                    "새 릴레이 스터디가 등록됐어요!", make_new_lecture_embed(lecture)
+                    lecture,
+                    "새 릴레이 스터디가 등록됐어요!",
+                    make_new_lecture_embed(lecture),
                 )
                 await asyncio.sleep(0.5)
 
@@ -236,6 +278,7 @@ async def poll_api() -> None:
                 lecture_id, "confirmed", lecture["title"]
             ):
                 await send_to_all_notify_channels(
+                    lecture,
                     "릴레이 스터디 개설이 확정됐어요!",
                     make_confirmed_embed(lecture, enrolled_count),
                 )
@@ -291,7 +334,7 @@ async def cmd_rels(interaction: discord.Interaction) -> None:
             timestamp=datetime.now(timezone.utc),
         )
 
-        for lecture in display_lectures:
+        for idx, lecture in enumerate(display_lectures):
             target = lecture.get("target") or "전체"
             is_confirmed = lecture.get("status") in CONFIRMED_STATUSES
 
@@ -305,11 +348,16 @@ async def cmd_rels(interaction: discord.Interaction) -> None:
             if lecture.get("lecture_url"):
                 lines.append(f"[신청하기]({lecture['lecture_url']})")
 
+            value = "\n".join(f"> {line}" for line in lines)
+
             embed.add_field(
-                name=f"{lecture['title']}",
-                value="\n".join(lines),
+                name=f"**{lecture['title']}**",
+                value=value,
                 inline=False,
             )
+
+            if idx != len(display_lectures) - 1:
+                embed.add_field(name="\u200b", value="┈" * 20, inline=False)
 
         footer_note = (
             " • 25개 이상의 강연 중 상위 25개만 표시됨" if len(lectures) > 25 else ""
