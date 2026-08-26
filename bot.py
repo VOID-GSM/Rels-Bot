@@ -30,7 +30,7 @@ GUILD_IDS = _parse_id_list(os.getenv("GUILD_ID", "1447887618317619261"))
 
 
 def _parse_channel_role_map(env_val: str) -> Dict[int, int]:
-    """"채널ID:역할ID,채널ID:역할ID" 형식 문자열을 파싱해 {채널ID: 역할ID} 매핑을 만든다."""
+    """ "채널ID:역할ID,채널ID:역할ID" 형식 문자열을 파싱해 {채널ID: 역할ID} 매핑을 만든다."""
     mapping: Dict[int, int] = {}
     for pair in env_val.split(","):
         pair = pair.strip()
@@ -42,6 +42,7 @@ def _parse_channel_role_map(env_val: str) -> Dict[int, int]:
         if channel_str.isdigit() and role_str.isdigit():
             mapping[int(channel_str)] = int(role_str)
     return mapping
+
 
 NOTIFY_CHANNEL_ROLE_MAP: Dict[int, int] = _parse_channel_role_map(
     os.getenv(
@@ -130,9 +131,13 @@ def _build_base_embed(
         timestamp=datetime.now(timezone.utc),
     )
     embed.add_field(name="강연 제목", value=f"**{lecture['title']}**", inline=False)
-    embed.add_field(name="연사자", value=lecture.get("creator_name") or "미정", inline=True)
+    embed.add_field(
+        name="연사자", value=lecture.get("creator_name") or "미정", inline=True
+    )
     embed.add_field(name="대상자", value=lecture.get("target") or "전체", inline=True)
-    embed.add_field(name="장소", value=lecture.get("lecture_location") or "미정", inline=True)
+    embed.add_field(
+        name="장소", value=lecture.get("lecture_location") or "미정", inline=True
+    )
 
     embed.add_field(name="강연 일시", value=_lecture_datetime_str(lecture), inline=True)
     embed.add_field(
@@ -155,10 +160,10 @@ def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
     return embed
 
 
-def make_confirmed_embed(
-    lecture: Dict[str, Any], enrolled_count: int
-) -> discord.Embed:
-    desc = f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
+def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discord.Embed:
+    desc = (
+        f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
+    )
     embed = _build_base_embed("릴레이 스터디 개설 확정!", lecture, description=desc)
     embed.add_field(name="현재 인원", value=f"**{enrolled_count}명**", inline=True)
     if lecture.get("lecture_url"):
@@ -202,7 +207,9 @@ async def send_to_all_notify_channels(message: str, embed: discord.Embed) -> Non
             except Exception as e:
                 print(f"[전송 에러] 채널 {channel_id}로 메시지 전송 실패: {e}")
         else:
-            print(f"[채널 없음] {channel_id} — 봇이 이 채널을 못 찾음(권한/캐시 확인 필요)")
+            print(
+                f"[채널 없음] {channel_id} — 봇이 이 채널을 못 찾음(권한/캐시 확인 필요)"
+            )
 
 
 @tasks.loop(seconds=POLL_INTERVAL)
@@ -376,10 +383,14 @@ async def on_ready() -> None:
                 guild_obj = discord.Object(id=guild_id)
                 bot.tree.copy_global_to(guild=guild_obj)
                 synced = await bot.tree.sync(guild=guild_obj)
-                print(f"[슬래시 동기화] 길드 {guild_id}: {len(synced)}개 명령어 동기화 완료")
+                print(
+                    f"[슬래시 동기화] 길드 {guild_id}: {len(synced)}개 명령어 동기화 완료"
+                )
         else:
             synced = await bot.tree.sync()
-            print(f"[슬래시 동기화] 전역: {len(synced)}개 명령어 동기화 완료 (반영까지 최대 1시간 소요될 수 있음)")
+            print(
+                f"[슬래시 동기화] 전역: {len(synced)}개 명령어 동기화 완료 (반영까지 최대 1시간 소요될 수 있음)"
+            )
     except Exception as e:
         print(f"[슬래시 동기화 오류] {e}")
 
