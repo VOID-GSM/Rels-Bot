@@ -174,7 +174,6 @@ def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discor
         f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
     )
     embed = _build_base_embed("✅릴레이 스터디 개설 확정!", lecture, description=desc)
-    embed.add_field(name="현재 인원", value=f"**{enrolled_count}명**", inline=True)
     if lecture.get("lecture_url"):
         embed.add_field(
             name="신청 링크",
@@ -252,6 +251,27 @@ async def send_to_all_notify_channels(
             )
 
 
+async def send_confirmed_notification(
+    lecture: Dict[str, Any], message: str, embed: discord.Embed
+) -> None:
+    """개설 확정 알림 전용 발송 함수. 멘션 없이 메시지만 보낸다."""
+    channel_ids = set(STATIC_NOTIFY_CHANNEL_ROLE_MAP) | set(
+        GRADE_AWARE_NOTIFY_CHANNEL_IDS
+    )
+
+    for channel_id in channel_ids:
+        channel = bot.get_channel(channel_id)
+        if channel:
+            try:
+                await channel.send(content=message, embed=embed)
+            except Exception as e:
+                print(f"[전송 에러] 채널 {channel_id}로 메시지 전송 실패: {e}")
+        else:
+            print(
+                f"[채널 없음] {channel_id} — 봇이 이 채널을 못 찾음(권한/캐시 확인 필요)"
+            )
+
+
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api() -> None:
     try:
@@ -277,7 +297,7 @@ async def poll_api() -> None:
             if is_confirmed_lecture(lecture, enrolled_count) and claim_notification(
                 lecture_id, "confirmed", lecture["title"]
             ):
-                await send_to_all_notify_channels(
+                await send_confirmed_notification(
                     lecture,
                     "릴레이 스터디 개설이 확정됐어요!",
                     make_confirmed_embed(lecture, enrolled_count),
