@@ -48,7 +48,9 @@ def was_notified(lecture_id: Any, notification_type: str) -> bool:
     return row is not None
 
 
-def claim_notification(lecture_id: Any, notification_type: str, title: Optional[str] = None) -> bool:
+def claim_notification(
+    lecture_id: Any, notification_type: str, title: Optional[str] = None
+) -> bool:
     now_iso = datetime.now(timezone.utc).isoformat()
     with closing(_connect()) as conn:
         with conn:
@@ -59,5 +61,7 @@ def claim_notification(lecture_id: Any, notification_type: str, title: Optional[
             return cur.rowcount == 1
 
 
-def mark_notified(lecture_id: Any, notification_type: str, title: Optional[str] = None) -> bool:
+def mark_notified(
+    lecture_id: Any, notification_type: str, title: Optional[str] = None
+) -> bool:
     return claim_notification(lecture_id, notification_type, title)
