@@ -1,6 +1,6 @@
 import asyncio
 import os
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 
 import discord
@@ -15,7 +15,14 @@ from api_client import (
     fetch_enrollment_counts,
     fetch_open_lectures,
 )
-from state_store import claim_notification, init_state_store, mark_notified
+from state_store import (
+    claim_notification,
+    get_due_open_notifications,
+    init_state_store,
+    mark_notified,
+    mark_open_notified,
+    schedule_open_notification,
+)
 
 load_dotenv()
 
@@ -68,6 +75,11 @@ CONFIRMED_MIN = int(os.getenv("CONFIRMED_MIN", "10"))
 CONFIRMED_STATUSES = {"CONFIRMED", "CONFIRM"}
 EMBED_COLOR = 0xE8B84B
 FOOTER_TEXT = "GSM 릴스 봇"
+
+# 신청 시작 시각 (한국 시간 기준 오후 4시 20분)
+KST = timezone(timedelta(hours=9))
+OPEN_HOUR = int(os.getenv("OPEN_HOUR", "16"))
+OPEN_MINUTE = int(os.getenv("OPEN_MINUTE", "20"))
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -130,6 +142,15 @@ def _make_progress_bar(enrolled: int, capacity: int, width: int = 10) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+def _compute_open_at_iso(now_utc: datetime) -> str:
+    """오늘(한국시간 기준) 오후 4시 20분을 UTC ISO 문자열로 계산한다."""
+    now_kst = now_utc.astimezone(KST)
+    open_kst = now_kst.replace(
+        hour=OPEN_HOUR, minute=OPEN_MINUTE, second=0, microsecond=0
+    )
+    return open_kst.astimezone(timezone.utc).isoformat()
+
+
 def _build_base_embed(
     title: str, lecture: Dict[str, Any], description: Optional[str] = None
 ) -> discord.Embed:
@@ -174,6 +195,19 @@ def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discor
         f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
     )
     embed = _build_base_embed("✅릴레이 스터디 개설 확정!", lecture, description=desc)
+    if lecture.get("lecture_url"):
+        embed.add_field(
+            name="신청 링크",
+            value=f"👉[강연 신청하러 가기]({lecture['lecture_url']})",
+            inline=False,
+        )
+    embed.set_footer(text=FOOTER_TEXT)
+    return embed
+
+
+def make_open_embed(lecture: Dict[str, Any]) -> discord.Embed:
+    desc = f"**{lecture['title']}** 강연 신청이 시작됐습니다!"
+    embed = _build_base_embed("🔔신청이 시작됐어요!", lecture, description=desc)
     if lecture.get("lecture_url"):
         embed.add_field(
             name="신청 링크",
@@ -272,6 +306,33 @@ async def send_confirmed_notification(
             )
 
 
+async def _process_due_open_notifications(lectures: List[Dict[str, Any]]) -> None:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    due_list = get_due_open_notifications(now_iso)
+    if not due_list:
+        return
+
+    lectures_by_id = {str(lec["id"]): lec for lec in lectures}
+
+    for due in due_list:
+        # 먼저 notified 처리해서, 강연을 못 찾아도 다음 폴링에서 또 시도하지 않도록 한다.
+        mark_open_notified(due["lecture_id"])
+
+        lecture = lectures_by_id.get(due["lecture_id"])
+        if lecture is None:
+            print(
+                f"[신청시작 알림 스킵] 강연 {due['lecture_id']}({due.get('title')})을 목록에서 찾지 못함"
+            )
+            continue
+
+        await send_to_all_notify_channels(
+            lecture,
+            "강연 신청이 시작됐어요!",
+            make_open_embed(lecture),
+        )
+        await asyncio.sleep(0.5)
+
+
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api() -> None:
     try:
@@ -292,6 +353,8 @@ async def poll_api() -> None:
                     "새 릴레이 스터디가 등록됐어요!",
                     make_new_lecture_embed(lecture),
                 )
+                open_at_iso = _compute_open_at_iso(datetime.now(timezone.utc))
+                schedule_open_notification(lecture_id, open_at_iso, lecture["title"])
                 await asyncio.sleep(0.5)
 
             if is_confirmed_lecture(lecture, enrolled_count) and claim_notification(
@@ -303,6 +366,8 @@ async def poll_api() -> None:
                     make_confirmed_embed(lecture, enrolled_count),
                 )
                 await asyncio.sleep(0.5)
+
+        await _process_due_open_notifications(lectures)
 
     except ApiError as exc:
         print(f"[API 오류] {exc}")
@@ -318,6 +383,7 @@ async def before_poll() -> None:
     try:
         lectures = fetch_open_lectures()
         enroll_map = fetch_enrollment_counts(lectures)
+        now_iso = datetime.now(timezone.utc).isoformat()
 
         for lecture in lectures:
             lecture_id = lecture["id"]
@@ -327,6 +393,10 @@ async def before_poll() -> None:
 
             if lecture.get("status") == "OPEN":
                 mark_notified(lecture_id, "new", lecture["title"])
+                # 봇 재시작 시점에 이미 존재하던 강연은 신청 시작 알림 대상에서 제외한다.
+                schedule_open_notification(
+                    lecture_id, now_iso, lecture["title"], notified=1
+                )
             if is_confirmed_lecture(lecture, enrolled_count):
                 mark_notified(lecture_id, "confirmed", lecture["title"])
 
@@ -479,3 +549,5 @@ if __name__ == "__main__":
     if not DISCORD_TOKEN:
         raise RuntimeError("DISCORD_TOKEN이 .env에 설정되어 있지 않습니다.")
     bot.run(DISCORD_TOKEN)
+
+    
