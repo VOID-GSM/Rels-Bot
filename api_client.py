@@ -160,6 +160,8 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
     starts_at_raw = _first(raw, "startsAt", "starts_at", "startDate", "start_date")
     starts_at = _parse_datetime(starts_at_raw)
 
+    created_at = _parse_datetime(_first(raw, "createdAt", "created_at"))
+
     lecture_id = _first(raw, "id", "lectureId")
     url_id = _first(raw, "lectureId", "id")
 
@@ -188,6 +190,7 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
         "target_grades": target_grades,
         "enrolled_count": enrolled_count,
         "lecture_url": f"{LECTURE_BASE_URL}/{url_id}" if url_id else None,
+        "created_at": created_at,
     }
 
 
@@ -225,3 +228,4 @@ def fetch_enrollment_counts(
         }
         for lecture in target_lectures
     }
+

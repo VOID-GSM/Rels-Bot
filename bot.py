@@ -142,12 +142,18 @@ def _make_progress_bar(enrolled: int, capacity: int, width: int = 10) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
-def _compute_open_at_iso(now_utc: datetime) -> str:
-    """오늘(한국시간 기준) 오후 4시 20분을 UTC ISO 문자열로 계산한다."""
-    now_kst = now_utc.astimezone(KST)
-    open_kst = now_kst.replace(
+def _compute_open_at_iso(created_at_utc: datetime) -> str:
+    """강연 등록 시각(created_at) 기준으로 신청 시작 시각을 계산해 UTC ISO 문자열로 반환한다.
+
+    규칙: 등록 시각이 그날 오후 4시 20분(KST) 이전이면 그날 4시 20분에 시작하고,
+    이미 지났으면 다음날 4시 20분으로 넘어간다. (rels.io.kr의 '신청 시작(자동)' 값과 동일한 규칙)
+    """
+    created_kst = created_at_utc.astimezone(KST)
+    open_kst = created_kst.replace(
         hour=OPEN_HOUR, minute=OPEN_MINUTE, second=0, microsecond=0
     )
+    if created_kst >= open_kst:
+        open_kst += timedelta(days=1)
     return open_kst.astimezone(timezone.utc).isoformat()
 
 
@@ -353,7 +359,8 @@ async def poll_api() -> None:
                     "새 릴레이 스터디가 등록됐어요!",
                     make_new_lecture_embed(lecture),
                 )
-                open_at_iso = _compute_open_at_iso(datetime.now(timezone.utc))
+                created_at = lecture.get("created_at") or datetime.now(timezone.utc)
+                open_at_iso = _compute_open_at_iso(created_at)
                 schedule_open_notification(lecture_id, open_at_iso, lecture["title"])
                 await asyncio.sleep(0.5)
 
