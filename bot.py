@@ -556,5 +556,3 @@ if __name__ == "__main__":
     if not DISCORD_TOKEN:
         raise RuntimeError("DISCORD_TOKEN이 .env에 설정되어 있지 않습니다.")
     bot.run(DISCORD_TOKEN)
-
-    
