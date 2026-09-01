@@ -228,4 +228,3 @@ def fetch_enrollment_counts(
         }
         for lecture in target_lectures
     }
-
