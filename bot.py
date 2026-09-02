@@ -15,7 +15,6 @@ from api_client import (
     fetch_all_lectures,
     fetch_all_lectures_basic,
     fetch_enrollment_counts,
-    fetch_open_lectures,
 )
 from state_store import (
     claim_notification,
@@ -197,6 +196,7 @@ def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
 
 
 def make_submission_embed(lecture: Dict[str, Any]) -> discord.Embed:
+    """학생회용: 강연 신청서가 새로 접수됐을 때 보내는 임베드."""
     embed = _build_base_embed("📝새 강연 신청서가 접수됐어요!", lecture)
     if lecture.get("lecture_url"):
         embed.add_field(
@@ -324,7 +324,6 @@ async def send_confirmed_notification(
 
 
 async def send_to_student_council(embed: discord.Embed) -> None:
-    """학생회 알림 채널로 멘션 없이 임베드만 전송한다."""
     channel = bot.get_channel(STUDENT_COUNCIL_CHANNEL_ID)
     if channel:
         try:
