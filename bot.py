@@ -377,7 +377,8 @@ async def poll_api() -> None:
         lectures = [
             lec
             for lec in all_lectures
-            if lec["status"] in OPEN_STATUSES and lec.get("approval_status") == "APPROVED"
+            if lec["status"] in OPEN_STATUSES
+            and lec.get("approval_status") == "APPROVED"
         ]
         enroll_map = fetch_enrollment_counts(lectures)
 
@@ -431,7 +432,8 @@ async def before_poll() -> None:
         lectures = [
             lec
             for lec in all_lectures
-            if lec["status"] in OPEN_STATUSES and lec.get("approval_status") == "APPROVED"
+            if lec["status"] in OPEN_STATUSES
+            and lec.get("approval_status") == "APPROVED"
         ]
         enroll_map = fetch_enrollment_counts(lectures)
         now_iso = datetime.now(timezone.utc).isoformat()
