@@ -1,6 +1,6 @@
 import asyncio
 import os
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 
 import discord
@@ -10,12 +10,20 @@ from dotenv import load_dotenv
 
 from api_client import (
     ApiError,
+    OPEN_STATUSES,
     fetch_active_lectures,
+    fetch_all_lectures,
     fetch_all_lectures_basic,
     fetch_enrollment_counts,
-    fetch_open_lectures,
 )
-from state_store import claim_notification, init_state_store, mark_notified
+from state_store import (
+    claim_notification,
+    get_due_open_notifications,
+    init_state_store,
+    mark_notified,
+    mark_open_notified,
+    schedule_open_notification,
+)
 
 load_dotenv()
 
@@ -62,12 +70,20 @@ GRADE_ROLE_MAP: Dict[int, int] = {
     2: int(os.getenv("GRADE2_ROLE_ID", "1334466986419163187")),
 }
 
+STUDENT_COUNCIL_CHANNEL_ID = int(
+    os.getenv("STUDENT_COUNCIL_CHANNEL_ID", "1542518682880839680")
+)
+
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "30"))
 CONFIRMED_MIN = int(os.getenv("CONFIRMED_MIN", "10"))
 
 CONFIRMED_STATUSES = {"CONFIRMED", "CONFIRM"}
 EMBED_COLOR = 0xE8B84B
 FOOTER_TEXT = "GSM 릴스 봇"
+
+KST = timezone(timedelta(hours=9))
+OPEN_HOUR = int(os.getenv("OPEN_HOUR", "16"))
+OPEN_MINUTE = int(os.getenv("OPEN_MINUTE", "20"))
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -130,6 +146,16 @@ def _make_progress_bar(enrolled: int, capacity: int, width: int = 10) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+def _compute_open_at_iso(approved_at_utc: datetime) -> str:
+    approved_kst = approved_at_utc.astimezone(KST)
+    open_kst = approved_kst.replace(
+        hour=OPEN_HOUR, minute=OPEN_MINUTE, second=0, microsecond=0
+    )
+    if approved_kst >= open_kst:
+        open_kst += timedelta(days=1)
+    return open_kst.astimezone(timezone.utc).isoformat()
+
+
 def _build_base_embed(
     title: str, lecture: Dict[str, Any], description: Optional[str] = None
 ) -> discord.Embed:
@@ -169,11 +195,37 @@ def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
     return embed
 
 
+def make_submission_embed(lecture: Dict[str, Any]) -> discord.Embed:
+    """학생회용: 강연 신청서가 새로 접수됐을 때 보내는 임베드."""
+    embed = _build_base_embed("📝새 강연 신청서가 접수됐어요!", lecture)
+    if lecture.get("lecture_url"):
+        embed.add_field(
+            name="신청서 링크",
+            value=f"👉[신청서 확인하러 가기]({lecture['lecture_url']})",
+            inline=False,
+        )
+    embed.set_footer(text=FOOTER_TEXT)
+    return embed
+
+
 def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discord.Embed:
     desc = (
         f"**{lecture['title']}** 강연이 {CONFIRMED_MIN}명 이상 모여 개설 확정됐습니다!"
     )
     embed = _build_base_embed("✅릴레이 스터디 개설 확정!", lecture, description=desc)
+    if lecture.get("lecture_url"):
+        embed.add_field(
+            name="신청 링크",
+            value=f"👉[강연 신청하러 가기]({lecture['lecture_url']})",
+            inline=False,
+        )
+    embed.set_footer(text=FOOTER_TEXT)
+    return embed
+
+
+def make_open_embed(lecture: Dict[str, Any]) -> discord.Embed:
+    desc = f"**{lecture['title']}** 강연 신청이 시작됐습니다!"
+    embed = _build_base_embed("🔔신청이 시작됐어요!", lecture, description=desc)
     if lecture.get("lecture_url"):
         embed.add_field(
             name="신청 링크",
@@ -254,7 +306,6 @@ async def send_to_all_notify_channels(
 async def send_confirmed_notification(
     lecture: Dict[str, Any], message: str, embed: discord.Embed
 ) -> None:
-    """개설 확정 알림 전용 발송 함수. 멘션 없이 메시지만 보낸다."""
     channel_ids = set(STATIC_NOTIFY_CHANNEL_ROLE_MAP) | set(
         GRADE_AWARE_NOTIFY_CHANNEL_IDS
     )
@@ -272,10 +323,62 @@ async def send_confirmed_notification(
             )
 
 
+async def send_to_student_council(embed: discord.Embed) -> None:
+    channel = bot.get_channel(STUDENT_COUNCIL_CHANNEL_ID)
+    if channel:
+        try:
+            await channel.send(embed=embed)
+        except Exception as e:
+            print(f"[전송 에러] 학생회 채널로 메시지 전송 실패: {e}")
+    else:
+        print(
+            f"[채널 없음] {STUDENT_COUNCIL_CHANNEL_ID} — 봇이 이 채널을 못 찾음(권한/캐시 확인 필요)"
+        )
+
+
+async def _process_due_open_notifications(lectures: List[Dict[str, Any]]) -> None:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    due_list = get_due_open_notifications(now_iso)
+    if not due_list:
+        return
+
+    lectures_by_id = {str(lec["id"]): lec for lec in lectures}
+
+    for due in due_list:
+        mark_open_notified(due["lecture_id"])
+
+        lecture = lectures_by_id.get(due["lecture_id"])
+        if lecture is None:
+            print(
+                f"[신청시작 알림 스킵] 강연 {due['lecture_id']}({due.get('title')})을 목록에서 찾지 못함"
+            )
+            continue
+
+        await send_to_all_notify_channels(
+            lecture,
+            "강연 신청이 시작됐어요!",
+            make_open_embed(lecture),
+        )
+        await asyncio.sleep(0.5)
+
+
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api() -> None:
     try:
-        lectures = fetch_open_lectures()
+        all_lectures = fetch_all_lectures()
+
+        for lecture in all_lectures:
+            lecture_id = lecture["id"]
+            if claim_notification(lecture_id, "submitted", lecture["title"]):
+                await send_to_student_council(make_submission_embed(lecture))
+                await asyncio.sleep(0.5)
+
+        lectures = [
+            lec
+            for lec in all_lectures
+            if lec["status"] in OPEN_STATUSES
+            and lec.get("approval_status") == "APPROVED"
+        ]
         enroll_map = fetch_enrollment_counts(lectures)
 
         for lecture in lectures:
@@ -292,6 +395,9 @@ async def poll_api() -> None:
                     "새 릴레이 스터디가 등록됐어요!",
                     make_new_lecture_embed(lecture),
                 )
+                approved_at = lecture.get("approved_at") or datetime.now(timezone.utc)
+                open_at_iso = _compute_open_at_iso(approved_at)
+                schedule_open_notification(lecture_id, open_at_iso, lecture["title"])
                 await asyncio.sleep(0.5)
 
             if is_confirmed_lecture(lecture, enrolled_count) and claim_notification(
@@ -303,6 +409,8 @@ async def poll_api() -> None:
                     make_confirmed_embed(lecture, enrolled_count),
                 )
                 await asyncio.sleep(0.5)
+
+        await _process_due_open_notifications(lectures)
 
     except ApiError as exc:
         print(f"[API 오류] {exc}")
@@ -316,8 +424,18 @@ async def before_poll() -> None:
     init_state_store()
 
     try:
-        lectures = fetch_open_lectures()
+        all_lectures = fetch_all_lectures()
+        for lecture in all_lectures:
+            mark_notified(lecture["id"], "submitted", lecture["title"])
+
+        lectures = [
+            lec
+            for lec in all_lectures
+            if lec["status"] in OPEN_STATUSES
+            and lec.get("approval_status") == "APPROVED"
+        ]
         enroll_map = fetch_enrollment_counts(lectures)
+        now_iso = datetime.now(timezone.utc).isoformat()
 
         for lecture in lectures:
             lecture_id = lecture["id"]
@@ -327,6 +445,9 @@ async def before_poll() -> None:
 
             if lecture.get("status") == "OPEN":
                 mark_notified(lecture_id, "new", lecture["title"])
+                schedule_open_notification(
+                    lecture_id, now_iso, lecture["title"], notified=1
+                )
             if is_confirmed_lecture(lecture, enrolled_count):
                 mark_notified(lecture_id, "confirmed", lecture["title"])
 

@@ -160,6 +160,13 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
     starts_at_raw = _first(raw, "startsAt", "starts_at", "startDate", "start_date")
     starts_at = _parse_datetime(starts_at_raw)
 
+    created_at = _parse_datetime(_first(raw, "createdAt", "created_at"))
+    approved_at = _parse_datetime(_first(raw, "approvedAt", "approved_at"))
+
+    approval_status = str(
+        _first(raw, "approvalStatus", "approval_status", default="PENDING")
+    ).upper()
+
     lecture_id = _first(raw, "id", "lectureId")
     url_id = _first(raw, "lectureId", "id")
 
@@ -188,13 +195,24 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
         "target_grades": target_grades,
         "enrolled_count": enrolled_count,
         "lecture_url": f"{LECTURE_BASE_URL}/{url_id}" if url_id else None,
+        "created_at": created_at,
+        "approval_status": approval_status,
+        "approved_at": approved_at,
     }
 
 
-def fetch_open_lectures() -> List[Dict[str, Any]]:
+def fetch_all_lectures() -> List[Dict[str, Any]]:
     payload = _request_json(_with_query(LECTURES_API_URL, {"size": PAGE_SIZE}))
-    lectures = [_normalize(item) for item in _pick_lectures(payload)]
-    return [lec for lec in lectures if lec["status"] in OPEN_STATUSES]
+    return [_normalize(item) for item in _pick_lectures(payload)]
+
+
+def fetch_open_lectures() -> List[Dict[str, Any]]:
+    lectures = fetch_all_lectures()
+    return [
+        lec
+        for lec in lectures
+        if lec["status"] in OPEN_STATUSES and lec.get("approval_status") == "APPROVED"
+    ]
 
 
 def fetch_active_lectures() -> List[Dict[str, Any]]:
