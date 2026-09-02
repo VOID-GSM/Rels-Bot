@@ -197,7 +197,6 @@ def make_new_lecture_embed(lecture: Dict[str, Any]) -> discord.Embed:
 
 
 def make_submission_embed(lecture: Dict[str, Any]) -> discord.Embed:
-    """학생회용: 강연 신청서가 새로 접수됐을 때 보내는 임베드."""
     embed = _build_base_embed("📝새 강연 신청서가 접수됐어요!", lecture)
     if lecture.get("lecture_url"):
         embed.add_field(
@@ -378,7 +377,8 @@ async def poll_api() -> None:
         lectures = [
             lec
             for lec in all_lectures
-            if lec["status"] in OPEN_STATUSES and lec.get("approval_status") == "APPROVED"
+            if lec["status"] in OPEN_STATUSES
+            and lec.get("approval_status") == "APPROVED"
         ]
         enroll_map = fetch_enrollment_counts(lectures)
 
@@ -432,7 +432,8 @@ async def before_poll() -> None:
         lectures = [
             lec
             for lec in all_lectures
-            if lec["status"] in OPEN_STATUSES and lec.get("approval_status") == "APPROVED"
+            if lec["status"] in OPEN_STATUSES
+            and lec.get("approval_status") == "APPROVED"
         ]
         enroll_map = fetch_enrollment_counts(lectures)
         now_iso = datetime.now(timezone.utc).isoformat()
