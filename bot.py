@@ -382,7 +382,6 @@ async def poll_api() -> None:
 
         for lecture in all_lectures:
             lecture_id = lecture["id"]
-            # 승인/거절 여부와 무관하게, 신청서가 새로 올라오면 바로 학생회에 접수 알림을 보낸다.
             if claim_notification(lecture_id, "submitted", lecture["title"]):
                 await send_to_student_council(make_submission_embed(lecture))
                 await asyncio.sleep(0.5)
