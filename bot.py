@@ -78,13 +78,13 @@ SUBMISSION_NOTIFY_CHANNEL_IDS: List[int] = _parse_id_list(
 )
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "30"))
+OPEN_CHECK_INTERVAL = float(os.getenv("OPEN_CHECK_INTERVAL", "1"))
 CONFIRMED_MIN = int(os.getenv("CONFIRMED_MIN", "10"))
 
 CONFIRMED_STATUSES = {"CONFIRMED", "CONFIRM"}
 EMBED_COLOR = 0xE8B84B
 FOOTER_TEXT = "GSM 릴스 봇"
 
-# 신청 시작 시각 (한국 시간 기준 오후 4시 20분)
 KST = timezone(timedelta(hours=9))
 OPEN_HOUR = int(os.getenv("OPEN_HOUR", "16"))
 OPEN_MINUTE = int(os.getenv("OPEN_MINUTE", "20"))
@@ -93,6 +93,8 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+_lectures_cache: List[Dict[str, Any]] = []
 
 
 def fmt_date(value: Optional[Union[datetime, date, str]]) -> str:
@@ -151,11 +153,6 @@ def _make_progress_bar(enrolled: int, capacity: int, width: int = 10) -> str:
 
 
 def _compute_open_at_iso(approved_at_utc: datetime) -> str:
-    """강연 승인 시각(approved_at) 기준으로 신청 시작 시각을 계산해 UTC ISO 문자열로 반환한다.
-
-    규칙: 승인 시각이 그날 오후 4시 20분(KST) 이전이면 그날 4시 20분에 시작하고,
-    이미 지났으면 다음날 4시 20분으로 넘어간다.
-    """
     approved_kst = approved_at_utc.astimezone(KST)
     open_kst = approved_kst.replace(
         hour=OPEN_HOUR, minute=OPEN_MINUTE, second=0, microsecond=0
@@ -315,7 +312,6 @@ async def send_to_all_notify_channels(
 async def send_confirmed_notification(
     lecture: Dict[str, Any], message: str, embed: discord.Embed
 ) -> None:
-    """개설 확정 알림 전용 발송 함수. 멘션 없이 메시지만 보낸다."""
     channel_ids = set(STATIC_NOTIFY_CHANNEL_ROLE_MAP) | set(
         GRADE_AWARE_NOTIFY_CHANNEL_IDS
     )
@@ -334,7 +330,6 @@ async def send_confirmed_notification(
 
 
 async def send_to_student_council(embed: discord.Embed) -> None:
-    """신청서 접수 알림 채널들로 멘션 없이 임베드만 전송한다."""
     for channel_id in SUBMISSION_NOTIFY_CHANNEL_IDS:
         channel = bot.get_channel(channel_id)
         if channel:
@@ -357,7 +352,6 @@ async def _process_due_open_notifications(lectures: List[Dict[str, Any]]) -> Non
     lectures_by_id = {str(lec["id"]): lec for lec in lectures}
 
     for due in due_list:
-        # 먼저 notified 처리해서, 강연을 못 찾아도 다음 폴링에서 또 시도하지 않도록 한다.
         mark_open_notified(due["lecture_id"])
 
         lecture = lectures_by_id.get(due["lecture_id"])
@@ -382,7 +376,6 @@ async def poll_api() -> None:
 
         for lecture in all_lectures:
             lecture_id = lecture["id"]
-            # 승인/거절 여부와 무관하게, 신청서가 새로 올라오면 바로 학생회에 접수 알림을 보낸다.
             if claim_notification(lecture_id, "submitted", lecture["title"]):
                 await send_to_student_council(make_submission_embed(lecture))
                 await asyncio.sleep(0.5)
@@ -424,12 +417,27 @@ async def poll_api() -> None:
                 )
                 await asyncio.sleep(0.5)
 
-        await _process_due_open_notifications(lectures)
+        global _lectures_cache
+        _lectures_cache = lectures
 
     except ApiError as exc:
         print(f"[API 오류] {exc}")
     except Exception as exc:
         print(f"[오류] {type(exc).__name__}: {exc}")
+
+
+@tasks.loop(seconds=OPEN_CHECK_INTERVAL)
+async def check_open_schedule() -> None:
+    try:
+        await _process_due_open_notifications(_lectures_cache)
+    except Exception as exc:
+        print(f"[신청시작 알림 체크 오류] {type(exc).__name__}: {exc}")
+
+
+@check_open_schedule.before_loop
+async def before_check_open_schedule() -> None:
+    await bot.wait_until_ready()
+    init_state_store()
 
 
 @poll_api.before_loop
@@ -459,9 +467,6 @@ async def before_poll() -> None:
 
             if lecture.get("status") == "OPEN":
                 mark_notified(lecture_id, "new", lecture["title"])
-                # 봇 재시작 시점에 이미 존재하던 강연은 신청 시작 알림 대상에서 제외한다.
-                # (주의: DB가 초기화된 상태로 재시작되면, 실제로 안 나갔던 알림도
-                #  이미 보낸 것으로 처리될 수 있음 - 근본 해결은 DB 영구 저장 설정)
                 schedule_open_notification(
                     lecture_id, now_iso, lecture["title"], notified=1
                 )
@@ -582,6 +587,8 @@ async def on_ready() -> None:
     print(f"[봇 시작] {bot.user} 로그인 완료")
     if not poll_api.is_running():
         poll_api.start()
+    if not check_open_schedule.is_running():
+        check_open_schedule.start()
 
     try:
         if GUILD_IDS:
