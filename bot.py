@@ -78,6 +78,7 @@ SUBMISSION_NOTIFY_CHANNEL_IDS: List[int] = _parse_id_list(
 )
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "30"))
+OPEN_CHECK_INTERVAL = float(os.getenv("OPEN_CHECK_INTERVAL", "1"))
 CONFIRMED_MIN = int(os.getenv("CONFIRMED_MIN", "10"))
 
 CONFIRMED_STATUSES = {"CONFIRMED", "CONFIRM"}
@@ -92,6 +93,11 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+# poll_api()가 갱신하는, 현재 열려있는(OPEN/승인됨) 강연 캐시.
+# 신청 시작 알림 시각 체크(check_open_schedule)가 API를 다시 호출하지 않고
+# 이 캐시를 참조해 빠른 주기로 정시 발송 여부만 확인한다.
+_lectures_cache: List[Dict[str, Any]] = []
 
 
 def fmt_date(value: Optional[Union[datetime, date, str]]) -> str:
@@ -414,12 +420,32 @@ async def poll_api() -> None:
                 )
                 await asyncio.sleep(0.5)
 
-        await _process_due_open_notifications(lectures)
+        global _lectures_cache
+        _lectures_cache = lectures
 
     except ApiError as exc:
         print(f"[API 오류] {exc}")
     except Exception as exc:
         print(f"[오류] {type(exc).__name__}: {exc}")
+
+
+@tasks.loop(seconds=OPEN_CHECK_INTERVAL)
+async def check_open_schedule() -> None:
+    """신청 시작(예: 16:20) 예약 알림을 빠른 주기로 체크해 정시에 가깝게 발송한다.
+
+    외부 API를 다시 호출하지 않고 poll_api()가 채워둔 _lectures_cache와
+    로컬 DB 시각 비교만 하므로, API 부하 없이 초 단위 정밀도를 낼 수 있다.
+    """
+    try:
+        await _process_due_open_notifications(_lectures_cache)
+    except Exception as exc:
+        print(f"[신청시작 알림 체크 오류] {type(exc).__name__}: {exc}")
+
+
+@check_open_schedule.before_loop
+async def before_check_open_schedule() -> None:
+    await bot.wait_until_ready()
+    init_state_store()  # CREATE TABLE IF NOT EXISTS라 poll_api와 중복 호출해도 안전
 
 
 @poll_api.before_loop
@@ -569,6 +595,8 @@ async def on_ready() -> None:
     print(f"[봇 시작] {bot.user} 로그인 완료")
     if not poll_api.is_running():
         poll_api.start()
+    if not check_open_schedule.is_running():
+        check_open_schedule.start()
 
     try:
         if GUILD_IDS:
