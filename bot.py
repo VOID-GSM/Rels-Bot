@@ -94,9 +94,6 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
-# poll_api()가 갱신하는, 현재 열려있는(OPEN/승인됨) 강연 캐시.
-# 신청 시작 알림 시각 체크(check_open_schedule)가 API를 다시 호출하지 않고
-# 이 캐시를 참조해 빠른 주기로 정시 발송 여부만 확인한다.
 _lectures_cache: List[Dict[str, Any]] = []
 
 
@@ -431,11 +428,6 @@ async def poll_api() -> None:
 
 @tasks.loop(seconds=OPEN_CHECK_INTERVAL)
 async def check_open_schedule() -> None:
-    """신청 시작(예: 16:20) 예약 알림을 빠른 주기로 체크해 정시에 가깝게 발송한다.
-
-    외부 API를 다시 호출하지 않고 poll_api()가 채워둔 _lectures_cache와
-    로컬 DB 시각 비교만 하므로, API 부하 없이 초 단위 정밀도를 낼 수 있다.
-    """
     try:
         await _process_due_open_notifications(_lectures_cache)
     except Exception as exc:
@@ -445,7 +437,7 @@ async def check_open_schedule() -> None:
 @check_open_schedule.before_loop
 async def before_check_open_schedule() -> None:
     await bot.wait_until_ready()
-    init_state_store()  # CREATE TABLE IF NOT EXISTS라 poll_api와 중복 호출해도 안전
+    init_state_store()
 
 
 @poll_api.before_loop
