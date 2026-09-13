@@ -487,13 +487,17 @@ async def before_poll() -> None:
                 if is_confirmed_lecture(lecture, enrolled_count):
                     mark_notified(lecture_id, "confirmed", lecture["title"])
 
-            print(f"[초기화] 기존 강연 {len(lectures)}개를 알림 완료 상태로 저장했습니다.")
+            print(
+                f"[초기화] 기존 강연 {len(lectures)}개를 알림 완료 상태로 저장했습니다."
+            )
             _init_seeded = True
             return
         except ApiError as exc:
             print(f"[초기화 API 오류] {exc} — {backoff}초 후 재시도합니다.")
         except Exception as exc:
-            print(f"[초기화 오류] {type(exc).__name__}: {exc} — {backoff}초 후 재시도합니다.")
+            print(
+                f"[초기화 오류] {type(exc).__name__}: {exc} — {backoff}초 후 재시도합니다."
+            )
 
         await asyncio.sleep(backoff)
         backoff = min(backoff * 2, max_backoff)
