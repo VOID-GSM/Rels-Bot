@@ -61,6 +61,11 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# rels-alarm-bot state
+bot_state.sqlite3
+bot_state.sqlite3-*
+bot.lock
+
 # Flask stuff:
 instance/
 .webassets-cache

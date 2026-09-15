@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 
@@ -28,6 +29,41 @@ from state_store import (
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+BOT_LOCK_PATH = os.getenv("BOT_LOCK_PATH", "bot.lock")
+
+_lock_file_handle = None  # 프로세스 종료까지 열어둬야 락이 유지됨
+
+
+def _acquire_single_instance_lock() -> None:
+    """이미 다른 bot.py 프로세스가 실행 중이면 즉시 종료한다.
+
+    같은 봇이 중복 실행되면 각 프로세스가 서로의 상태(state DB)를 모른 채
+    독립적으로 폴링하다가, 같은 강연에 대해 둘 다 "새 강연 등록" 등의
+    알림을 보내 디스코드에 중복 메시지가 발송되는 사고로 이어진다.
+    락은 파일 디스크립터 단위로 걸려서 프로세스가 어떻게 종료되든
+    (정상 종료/크래시) OS가 자동으로 풀어준다.
+    """
+    global _lock_file_handle
+    _lock_file_handle = open(BOT_LOCK_PATH, "w")
+
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(_lock_file_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(_lock_file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print(
+            f"[중복 실행 차단] 다른 bot.py 프로세스가 이미 실행 중인 것 같습니다 "
+            f"(락 파일: {BOT_LOCK_PATH}). 이 프로세스는 종료합니다."
+        )
+        sys.exit(1)
+
+    _lock_file_handle.write(str(os.getpid()))
+    _lock_file_handle.flush()
 
 
 def _parse_id_list(env_val: str) -> List[int]:
@@ -646,4 +682,5 @@ async def on_app_command_error(
 if __name__ == "__main__":
     if not DISCORD_TOKEN:
         raise RuntimeError("DISCORD_TOKEN이 .env에 설정되어 있지 않습니다.")
+    _acquire_single_instance_lock()
     bot.run(DISCORD_TOKEN)
