@@ -35,7 +35,6 @@ _lock_file_handle = None  # 프로세스 종료까지 열어둬야 락이 유지
 
 
 def _acquire_single_instance_lock() -> None:
-    # 중복 실행 시 각 프로세스가 독립적으로 폴링해 알림이 중복 발송되는 것을 막는다.
     global _lock_file_handle
     _lock_file_handle = open(BOT_LOCK_PATH, "w")
 
@@ -124,7 +123,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 _lectures_cache: List[Dict[str, Any]] = []
-_init_seeded = False  # before_poll이 기존 강연을 '알림 완료'로 마킹 끝냈는지 여부
+_init_seeded = False
 
 
 def fmt_date(value: Optional[Union[datetime, date, str]]) -> str:
@@ -430,8 +429,7 @@ async def poll_api() -> None:
                 enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0
             )
 
-            # 신청서 접수 알림이 방금 이 주기에 나간 강연은 등록 알림을 다음 주기로
-            # 미룬다. 그래야 두 알림이 한꺼번에 오지 않고 접수 알림이 먼저 도착한다.
+            # 접수 알림이 먼저 도착하도록 등록 알림은 다음 주기로 미룬다.
             if lecture_id in just_submitted_ids:
                 continue
 
@@ -488,7 +486,6 @@ async def before_poll() -> None:
     backoff = 5
     max_backoff = 60
 
-    # 기존 강연을 '알림 완료'로 마킹하기 전까지는 poll_api를 시작하지 않는다.
     while True:
         try:
             all_lectures = fetch_all_lectures()

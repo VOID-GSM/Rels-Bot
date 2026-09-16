@@ -97,12 +97,7 @@ def schedule_open_notification(
     title: Optional[str] = None,
     notified: int = 0,
 ) -> None:
-    """신청 시작(오후 4시 20분) 알림을 예약한다.
-
-    notified=1로 넣으면 '이미 처리된 것'으로 기록되어 실제 알림은 나가지 않는다.
-    (봇 재시작 시 기존 강연들에 대해 사용)
-    이미 같은 lecture_id로 예약된 건이 있으면 무시된다.
-    """
+    # notified=1이면 실제 알림 없이 처리 완료로만 기록한다(재시작 시 기존 강연용).
     with closing(_connect()) as conn:
         with conn:
             conn.execute(
@@ -112,7 +107,6 @@ def schedule_open_notification(
 
 
 def get_due_open_notifications(now_iso: str) -> List[Dict[str, Any]]:
-    """아직 알림을 안 보냈고, 예정 시각이 지난 강연 목록을 반환한다."""
     with closing(_connect()) as conn:
         rows = conn.execute(_SELECT_DUE_OPEN_SQL, (now_iso,)).fetchall()
     return [{"lecture_id": row[0], "open_at": row[1], "title": row[2]} for row in rows]
