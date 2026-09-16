@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 
@@ -28,6 +29,33 @@ from state_store import (
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+BOT_LOCK_PATH = os.getenv("BOT_LOCK_PATH", "bot.lock")
+
+_lock_file_handle = None  # 프로세스 종료까지 열어둬야 락이 유지됨
+
+
+def _acquire_single_instance_lock() -> None:
+    global _lock_file_handle
+    _lock_file_handle = open(BOT_LOCK_PATH, "w")
+
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(_lock_file_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(_lock_file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print(
+            f"[중복 실행 차단] 다른 bot.py 프로세스가 이미 실행 중인 것 같습니다 "
+            f"(락 파일: {BOT_LOCK_PATH}). 이 프로세스는 종료합니다."
+        )
+        sys.exit(1)
+
+    _lock_file_handle.write(str(os.getpid()))
+    _lock_file_handle.flush()
 
 
 def _parse_id_list(env_val: str) -> List[int]:
@@ -95,7 +123,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 _lectures_cache: List[Dict[str, Any]] = []
-_init_seeded = False  # before_poll이 기존 강연을 '알림 완료'로 마킹 끝냈는지 여부
+_init_seeded = False
 
 
 def fmt_date(value: Optional[Union[datetime, date, str]]) -> str:
@@ -372,19 +400,18 @@ async def _process_due_open_notifications(lectures: List[Dict[str, Any]]) -> Non
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api() -> None:
     if not _init_seeded:
-        # before_poll의 초기 마킹이 아직 끝나지 않았다면 이번 주기는 건너뛴다.
-        # (정상 흐름에서는 before_loop가 끝나야 여기 도달하므로 발생하지 않아야 하지만,
-        #  혹시라도 순서가 깨지면 기존 강연들이 '새 알림'으로 오인되어 한꺼번에
-        #  발송되는 사고를 막기 위한 이중 방어선이다.)
+        # 초기 마킹이 끝나기 전에 돌면 기존 강연을 '새 알림'으로 오인해 중복 발송할 수 있다.
         print("[폴링 스킵] 초기화가 아직 완료되지 않아 이번 주기는 건너뜁니다.")
         return
 
     try:
         all_lectures = fetch_all_lectures()
 
+        just_submitted_ids = set()
         for lecture in all_lectures:
             lecture_id = lecture["id"]
             if claim_notification(lecture_id, "submitted", lecture["title"]):
+                just_submitted_ids.add(lecture_id)
                 await send_to_student_council(make_submission_embed(lecture))
                 await asyncio.sleep(0.5)
 
@@ -401,6 +428,10 @@ async def poll_api() -> None:
             enrolled_count = int(
                 enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0
             )
+
+            # 접수 알림이 먼저 도착하도록 등록 알림은 다음 주기로 미룬다.
+            if lecture_id in just_submitted_ids:
+                continue
 
             if lecture.get("status") == "OPEN" and claim_notification(
                 lecture_id, "new", lecture["title"]
@@ -455,9 +486,6 @@ async def before_poll() -> None:
     backoff = 5
     max_backoff = 60
 
-    # 기존 강연들을 '알림 완료'로 먼저 마킹하기 전까지는 poll_api 본문이 돌면 안 된다.
-    # (실패를 그냥 로그만 찍고 넘기면, 마킹이 안 된 상태로 폴링이 시작돼 이미
-    #  개설/확정됐던 강연들을 전부 '새 알림'으로 오인해 한꺼번에 발송해버린다.)
     while True:
         try:
             all_lectures = fetch_all_lectures()
@@ -487,13 +515,17 @@ async def before_poll() -> None:
                 if is_confirmed_lecture(lecture, enrolled_count):
                     mark_notified(lecture_id, "confirmed", lecture["title"])
 
-            print(f"[초기화] 기존 강연 {len(lectures)}개를 알림 완료 상태로 저장했습니다.")
+            print(
+                f"[초기화] 기존 강연 {len(lectures)}개를 알림 완료 상태로 저장했습니다."
+            )
             _init_seeded = True
             return
         except ApiError as exc:
             print(f"[초기화 API 오류] {exc} — {backoff}초 후 재시도합니다.")
         except Exception as exc:
-            print(f"[초기화 오류] {type(exc).__name__}: {exc} — {backoff}초 후 재시도합니다.")
+            print(
+                f"[초기화 오류] {type(exc).__name__}: {exc} — {backoff}초 후 재시도합니다."
+            )
 
         await asyncio.sleep(backoff)
         backoff = min(backoff * 2, max_backoff)
@@ -642,4 +674,5 @@ async def on_app_command_error(
 if __name__ == "__main__":
     if not DISCORD_TOKEN:
         raise RuntimeError("DISCORD_TOKEN이 .env에 설정되어 있지 않습니다.")
+    _acquire_single_instance_lock()
     bot.run(DISCORD_TOKEN)
