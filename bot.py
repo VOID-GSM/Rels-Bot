@@ -35,14 +35,7 @@ _lock_file_handle = None  # 프로세스 종료까지 열어둬야 락이 유지
 
 
 def _acquire_single_instance_lock() -> None:
-    """이미 다른 bot.py 프로세스가 실행 중이면 즉시 종료한다.
-
-    같은 봇이 중복 실행되면 각 프로세스가 서로의 상태(state DB)를 모른 채
-    독립적으로 폴링하다가, 같은 강연에 대해 둘 다 "새 강연 등록" 등의
-    알림을 보내 디스코드에 중복 메시지가 발송되는 사고로 이어진다.
-    락은 파일 디스크립터 단위로 걸려서 프로세스가 어떻게 종료되든
-    (정상 종료/크래시) OS가 자동으로 풀어준다.
-    """
+    # 중복 실행 시 각 프로세스가 독립적으로 폴링해 알림이 중복 발송되는 것을 막는다.
     global _lock_file_handle
     _lock_file_handle = open(BOT_LOCK_PATH, "w")
 
@@ -408,19 +401,18 @@ async def _process_due_open_notifications(lectures: List[Dict[str, Any]]) -> Non
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api() -> None:
     if not _init_seeded:
-        # before_poll의 초기 마킹이 아직 끝나지 않았다면 이번 주기는 건너뛴다.
-        # (정상 흐름에서는 before_loop가 끝나야 여기 도달하므로 발생하지 않아야 하지만,
-        #  혹시라도 순서가 깨지면 기존 강연들이 '새 알림'으로 오인되어 한꺼번에
-        #  발송되는 사고를 막기 위한 이중 방어선이다.)
+        # 초기 마킹이 끝나기 전에 돌면 기존 강연을 '새 알림'으로 오인해 중복 발송할 수 있다.
         print("[폴링 스킵] 초기화가 아직 완료되지 않아 이번 주기는 건너뜁니다.")
         return
 
     try:
         all_lectures = fetch_all_lectures()
 
+        just_submitted_ids = set()
         for lecture in all_lectures:
             lecture_id = lecture["id"]
             if claim_notification(lecture_id, "submitted", lecture["title"]):
+                just_submitted_ids.add(lecture_id)
                 await send_to_student_council(make_submission_embed(lecture))
                 await asyncio.sleep(0.5)
 
@@ -437,6 +429,11 @@ async def poll_api() -> None:
             enrolled_count = int(
                 enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0
             )
+
+            # 신청서 접수 알림이 방금 이 주기에 나간 강연은 등록 알림을 다음 주기로
+            # 미룬다. 그래야 두 알림이 한꺼번에 오지 않고 접수 알림이 먼저 도착한다.
+            if lecture_id in just_submitted_ids:
+                continue
 
             if lecture.get("status") == "OPEN" and claim_notification(
                 lecture_id, "new", lecture["title"]
@@ -491,9 +488,7 @@ async def before_poll() -> None:
     backoff = 5
     max_backoff = 60
 
-    # 기존 강연들을 '알림 완료'로 먼저 마킹하기 전까지는 poll_api 본문이 돌면 안 된다.
-    # (실패를 그냥 로그만 찍고 넘기면, 마킹이 안 된 상태로 폴링이 시작돼 이미
-    #  개설/확정됐던 강연들을 전부 '새 알림'으로 오인해 한꺼번에 발송해버린다.)
+    # 기존 강연을 '알림 완료'로 마킹하기 전까지는 poll_api를 시작하지 않는다.
     while True:
         try:
             all_lectures = fetch_all_lectures()
