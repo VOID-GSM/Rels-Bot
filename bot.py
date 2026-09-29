@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from api_client import (
     ApiError,
     OPEN_STATUSES,
+    REGISTERED_STATUSES,
     fetch_active_lectures,
     fetch_all_lectures,
     fetch_all_lectures_basic,
@@ -433,7 +434,7 @@ async def poll_api() -> None:
             if lecture_id in just_submitted_ids:
                 continue
 
-            if lecture.get("status") == "OPEN" and claim_notification(
+            if lecture.get("status") in REGISTERED_STATUSES and claim_notification(
                 lecture_id, "new", lecture["title"]
             ):
                 await send_to_all_notify_channels(
@@ -507,7 +508,7 @@ async def before_poll() -> None:
                     enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0
                 )
 
-                if lecture.get("status") == "OPEN":
+                if lecture.get("status") in REGISTERED_STATUSES:
                     mark_notified(lecture_id, "new", lecture["title"])
                     schedule_open_notification(
                         lecture_id, now_iso, lecture["title"], notified=1
