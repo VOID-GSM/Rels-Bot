@@ -25,6 +25,7 @@ from state_store import (
     mark_notified,
     mark_open_notified,
     schedule_open_notification,
+    was_notified,
 )
 
 load_dotenv()
@@ -259,6 +260,18 @@ def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discor
     return embed
 
 
+def make_unconfirmed_embed(
+    lecture: Dict[str, Any], enrolled_count: int
+) -> discord.Embed:
+    desc = (
+        f"**{lecture['title']}** 강연이 신청 마감까지 {CONFIRMED_MIN}명이 모이지 않아 "
+        f"개설이 확정되지 않았습니다. (신청 {enrolled_count}명)"
+    )
+    embed = _build_base_embed("⚠️릴레이 스터디 개설 불확정", lecture, description=desc)
+    embed.set_footer(text=FOOTER_TEXT)
+    return embed
+
+
 def make_open_embed(lecture: Dict[str, Any]) -> discord.Embed:
     desc = f"**{lecture['title']}** 강연 신청이 시작됐습니다!"
     embed = _build_base_embed("🔔신청이 시작됐어요!", lecture, description=desc)
@@ -314,6 +327,32 @@ def is_confirmed_lecture(lecture: Dict[str, Any], enrolled_count: int) -> bool:
     )
 
 
+def _parse_deadline(value: Optional[Union[datetime, str]]) -> Optional[datetime]:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    # 시간대 없는 신청 마감 시각은 한국 시간으로 입력된 값이다.
+    return dt if dt.tzinfo else dt.replace(tzinfo=KST)
+
+
+def is_unconfirmed_lecture(
+    lecture: Dict[str, Any], enrolled_count: int, now: datetime
+) -> bool:
+    deadline = _parse_deadline(lecture.get("application_deadline"))
+    return (
+        deadline is not None
+        and deadline <= now
+        and lecture.get("status") not in CONFIRMED_STATUSES
+        and enrolled_count < CONFIRMED_MIN
+    )
+
+
 async def send_to_all_notify_channels(
     lecture: Dict[str, Any], embed: discord.Embed
 ) -> None:
@@ -339,7 +378,7 @@ async def send_to_all_notify_channels(
             )
 
 
-async def send_confirmed_notification(
+async def send_status_notification(
     lecture: Dict[str, Any], embed: discord.Embed
 ) -> None:
     channel_ids = set(STATIC_NOTIFY_CHANNEL_ROLE_MAP) | set(
@@ -449,9 +488,31 @@ async def poll_api() -> None:
             if is_confirmed_lecture(lecture, enrolled_count) and claim_notification(
                 lecture_id, "confirmed", lecture["title"]
             ):
-                await send_confirmed_notification(
+                await send_status_notification(
                     lecture,
                     make_confirmed_embed(lecture, enrolled_count),
+                )
+                await asyncio.sleep(0.5)
+
+        # 마감 후에는 상태가 CLOSE로 바뀔 수 있어 승인된 강연 전체를 확인한다.
+        now = datetime.now(timezone.utc)
+        for lecture in all_lectures:
+            lecture_id = lecture["id"]
+            if (
+                lecture.get("approval_status") != "APPROVED"
+                or lecture_id in just_submitted_ids
+            ):
+                continue
+
+            enrolled_count = int(lecture.get("enrolled_count") or 0)
+            if (
+                is_unconfirmed_lecture(lecture, enrolled_count, now)
+                and not was_notified(lecture_id, "confirmed")
+                and claim_notification(lecture_id, "unconfirmed", lecture["title"])
+            ):
+                await send_status_notification(
+                    lecture,
+                    make_unconfirmed_embed(lecture, enrolled_count),
                 )
                 await asyncio.sleep(0.5)
 
@@ -515,6 +576,14 @@ async def before_poll() -> None:
                     )
                 if is_confirmed_lecture(lecture, enrolled_count):
                     mark_notified(lecture_id, "confirmed", lecture["title"])
+
+            now = datetime.now(timezone.utc)
+            for lecture in all_lectures:
+                if lecture.get("approval_status") != "APPROVED":
+                    continue
+                enrolled_count = int(lecture.get("enrolled_count") or 0)
+                if is_unconfirmed_lecture(lecture, enrolled_count, now):
+                    mark_notified(lecture["id"], "unconfirmed", lecture["title"])
 
             print(
                 f"[초기화] 기존 강연 {len(lectures)}개를 알림 완료 상태로 저장했습니다."
