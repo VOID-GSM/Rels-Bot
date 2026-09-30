@@ -20,7 +20,9 @@ LECTURE_BASE_URL = (
     os.getenv("LECTURE_BASE_URL", "https://rels.io.kr/lectures").strip().rstrip("/")
 )
 
-OPEN_STATUSES = {"OPEN", "CONFIRMED", "CONFIRM"}
+OPEN_STATUSES = {"OPEN", "UNCONFIRMED", "CONFIRMED", "CONFIRM"}
+# 승인 후 등록 알림 대상이 되는 상태(개설 확정 전)
+REGISTERED_STATUSES = {"OPEN", "UNCONFIRMED"}
 
 
 class ApiError(RuntimeError):
@@ -228,7 +230,9 @@ def fetch_active_lectures() -> List[Dict[str, Any]]:
 
 
 def fetch_all_lectures_basic() -> List[Dict[str, Any]]:
-    return [lec for lec in fetch_open_lectures() if lec["status"] == "OPEN"]
+    return [
+        lec for lec in fetch_open_lectures() if lec["status"] in REGISTERED_STATUSES
+    ]
 
 
 def fetch_enrollment_counts(
