@@ -1,6 +1,5 @@
 import asyncio
 import os
-import sys
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 
@@ -25,39 +24,11 @@ from state_store import (
     mark_notified,
     mark_open_notified,
     schedule_open_notification,
-    was_notified,
 )
 
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-BOT_LOCK_PATH = os.getenv("BOT_LOCK_PATH", "bot.lock")
-
-_lock_file_handle = None  # 프로세스 종료까지 열어둬야 락이 유지됨
-
-
-def _acquire_single_instance_lock() -> None:
-    global _lock_file_handle
-    _lock_file_handle = open(BOT_LOCK_PATH, "w")
-
-    try:
-        if os.name == "nt":
-            import msvcrt
-
-            msvcrt.locking(_lock_file_handle.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(_lock_file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        print(
-            f"[중복 실행 차단] 다른 bot.py 프로세스가 이미 실행 중인 것 같습니다 "
-            f"(락 파일: {BOT_LOCK_PATH}). 이 프로세스는 종료합니다."
-        )
-        sys.exit(1)
-
-    _lock_file_handle.write(str(os.getpid()))
-    _lock_file_handle.flush()
 
 
 def _parse_id_list(env_val: str) -> List[int]:
@@ -108,7 +79,6 @@ SUBMISSION_NOTIFY_CHANNEL_IDS: List[int] = _parse_id_list(
 )
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "30"))
-OPEN_CHECK_INTERVAL = float(os.getenv("OPEN_CHECK_INTERVAL", "1"))
 CONFIRMED_MIN = int(os.getenv("CONFIRMED_MIN", "10"))
 
 CONFIRMED_STATUSES = {"CONFIRMED", "CONFIRM"}
@@ -123,9 +93,6 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
-
-_lectures_cache: List[Dict[str, Any]] = []
-_init_seeded = False
 
 
 def fmt_date(value: Optional[Union[datetime, date, str]]) -> str:
@@ -260,18 +227,6 @@ def make_confirmed_embed(lecture: Dict[str, Any], enrolled_count: int) -> discor
     return embed
 
 
-def make_unconfirmed_embed(
-    lecture: Dict[str, Any], enrolled_count: int
-) -> discord.Embed:
-    desc = (
-        f"**{lecture['title']}** 강연이 신청 마감까지 {CONFIRMED_MIN}명이 모이지 않아 "
-        f"개설이 확정되지 않았습니다. (신청 {enrolled_count}명)"
-    )
-    embed = _build_base_embed("⚠️릴레이 스터디 개설 불확정", lecture, description=desc)
-    embed.set_footer(text=FOOTER_TEXT)
-    return embed
-
-
 def make_open_embed(lecture: Dict[str, Any]) -> discord.Embed:
     desc = f"**{lecture['title']}** 강연 신청이 시작됐습니다!"
     embed = _build_base_embed("🔔신청이 시작됐어요!", lecture, description=desc)
@@ -327,34 +282,8 @@ def is_confirmed_lecture(lecture: Dict[str, Any], enrolled_count: int) -> bool:
     )
 
 
-def _parse_deadline(value: Optional[Union[datetime, str]]) -> Optional[datetime]:
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        dt = value
-    else:
-        try:
-            dt = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    # 시간대 없는 신청 마감 시각은 한국 시간으로 입력된 값이다.
-    return dt if dt.tzinfo else dt.replace(tzinfo=KST)
-
-
-def is_unconfirmed_lecture(
-    lecture: Dict[str, Any], enrolled_count: int, now: datetime
-) -> bool:
-    deadline = _parse_deadline(lecture.get("application_deadline"))
-    return (
-        deadline is not None
-        and deadline <= now
-        and lecture.get("status") not in CONFIRMED_STATUSES
-        and enrolled_count < CONFIRMED_MIN
-    )
-
-
 async def send_to_all_notify_channels(
-    lecture: Dict[str, Any], embed: discord.Embed
+    lecture: Dict[str, Any], message: str, embed: discord.Embed
 ) -> None:
     channel_ids = set(STATIC_NOTIFY_CHANNEL_ROLE_MAP) | set(
         GRADE_AWARE_NOTIFY_CHANNEL_IDS
@@ -367,7 +296,7 @@ async def send_to_all_notify_channels(
                 mention = _get_grade_channel_mention(channel_id, lecture)
             else:
                 mention = _get_static_channel_mention(channel_id)
-            content = mention.strip() or None
+            content = f"{mention} {message}".strip()
             try:
                 await channel.send(content=content, embed=embed)
             except Exception as e:
@@ -378,8 +307,8 @@ async def send_to_all_notify_channels(
             )
 
 
-async def send_status_notification(
-    lecture: Dict[str, Any], embed: discord.Embed
+async def send_confirmed_notification(
+    lecture: Dict[str, Any], message: str, embed: discord.Embed
 ) -> None:
     channel_ids = set(STATIC_NOTIFY_CHANNEL_ROLE_MAP) | set(
         GRADE_AWARE_NOTIFY_CHANNEL_IDS
@@ -389,7 +318,7 @@ async def send_status_notification(
         channel = bot.get_channel(channel_id)
         if channel:
             try:
-                await channel.send(embed=embed)
+                await channel.send(content=message, embed=embed)
             except Exception as e:
                 print(f"[전송 에러] 채널 {channel_id}로 메시지 전송 실패: {e}")
         else:
@@ -432,6 +361,7 @@ async def _process_due_open_notifications(lectures: List[Dict[str, Any]]) -> Non
 
         await send_to_all_notify_channels(
             lecture,
+            "강연 신청이 시작됐어요!",
             make_open_embed(lecture),
         )
         await asyncio.sleep(0.5)
@@ -439,19 +369,12 @@ async def _process_due_open_notifications(lectures: List[Dict[str, Any]]) -> Non
 
 @tasks.loop(seconds=POLL_INTERVAL)
 async def poll_api() -> None:
-    if not _init_seeded:
-        # 초기 마킹이 끝나기 전에 돌면 기존 강연을 '새 알림'으로 오인해 중복 발송할 수 있다.
-        print("[폴링 스킵] 초기화가 아직 완료되지 않아 이번 주기는 건너뜁니다.")
-        return
-
     try:
         all_lectures = fetch_all_lectures()
 
-        just_submitted_ids = set()
         for lecture in all_lectures:
             lecture_id = lecture["id"]
             if claim_notification(lecture_id, "submitted", lecture["title"]):
-                just_submitted_ids.add(lecture_id)
                 await send_to_student_council(make_submission_embed(lecture))
                 await asyncio.sleep(0.5)
 
@@ -469,15 +392,12 @@ async def poll_api() -> None:
                 enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0
             )
 
-            # 접수 알림이 먼저 도착하도록 등록 알림은 다음 주기로 미룬다.
-            if lecture_id in just_submitted_ids:
-                continue
-
             if lecture.get("status") in REGISTERED_STATUSES and claim_notification(
                 lecture_id, "new", lecture["title"]
             ):
                 await send_to_all_notify_channels(
                     lecture,
+                    "새 릴레이 스터디가 등록됐어요!",
                     make_new_lecture_embed(lecture),
                 )
                 approved_at = lecture.get("approved_at") or datetime.now(timezone.utc)
@@ -488,36 +408,14 @@ async def poll_api() -> None:
             if is_confirmed_lecture(lecture, enrolled_count) and claim_notification(
                 lecture_id, "confirmed", lecture["title"]
             ):
-                await send_status_notification(
+                await send_confirmed_notification(
                     lecture,
+                    "릴레이 스터디 개설이 확정됐어요!",
                     make_confirmed_embed(lecture, enrolled_count),
                 )
                 await asyncio.sleep(0.5)
 
-        # 마감 후에는 상태가 CLOSE로 바뀔 수 있어 승인된 강연 전체를 확인한다.
-        now = datetime.now(timezone.utc)
-        for lecture in all_lectures:
-            lecture_id = lecture["id"]
-            if (
-                lecture.get("approval_status") != "APPROVED"
-                or lecture_id in just_submitted_ids
-            ):
-                continue
-
-            enrolled_count = int(lecture.get("enrolled_count") or 0)
-            if (
-                is_unconfirmed_lecture(lecture, enrolled_count, now)
-                and not was_notified(lecture_id, "confirmed")
-                and claim_notification(lecture_id, "unconfirmed", lecture["title"])
-            ):
-                await send_status_notification(
-                    lecture,
-                    make_unconfirmed_embed(lecture, enrolled_count),
-                )
-                await asyncio.sleep(0.5)
-
-        global _lectures_cache
-        _lectures_cache = lectures
+        await _process_due_open_notifications(lectures)
 
     except ApiError as exc:
         print(f"[API 오류] {exc}")
@@ -525,80 +423,44 @@ async def poll_api() -> None:
         print(f"[오류] {type(exc).__name__}: {exc}")
 
 
-@tasks.loop(seconds=OPEN_CHECK_INTERVAL)
-async def check_open_schedule() -> None:
-    try:
-        await _process_due_open_notifications(_lectures_cache)
-    except Exception as exc:
-        print(f"[신청시작 알림 체크 오류] {type(exc).__name__}: {exc}")
-
-
-@check_open_schedule.before_loop
-async def before_check_open_schedule() -> None:
-    await bot.wait_until_ready()
-    init_state_store()
-
-
 @poll_api.before_loop
 async def before_poll() -> None:
     await bot.wait_until_ready()
     init_state_store()
 
-    global _init_seeded
-    backoff = 5
-    max_backoff = 60
+    try:
+        all_lectures = fetch_all_lectures()
+        for lecture in all_lectures:
+            mark_notified(lecture["id"], "submitted", lecture["title"])
 
-    while True:
-        try:
-            all_lectures = fetch_all_lectures()
-            for lecture in all_lectures:
-                mark_notified(lecture["id"], "submitted", lecture["title"])
+        lectures = [
+            lec
+            for lec in all_lectures
+            if lec["status"] in OPEN_STATUSES
+            and lec.get("approval_status") == "APPROVED"
+        ]
+        enroll_map = fetch_enrollment_counts(lectures)
+        now_iso = datetime.now(timezone.utc).isoformat()
 
-            lectures = [
-                lec
-                for lec in all_lectures
-                if lec["status"] in OPEN_STATUSES
-                and lec.get("approval_status") == "APPROVED"
-            ]
-            enroll_map = fetch_enrollment_counts(lectures)
-            now_iso = datetime.now(timezone.utc).isoformat()
+        for lecture in lectures:
+            lecture_id = lecture["id"]
+            enrolled_count = int(
+                enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0
+            )
 
-            for lecture in lectures:
-                lecture_id = lecture["id"]
-                enrolled_count = int(
-                    enroll_map.get(lecture_id, {}).get("enrolled_count", 0) or 0
+            if lecture.get("status") in REGISTERED_STATUSES:
+                mark_notified(lecture_id, "new", lecture["title"])
+                schedule_open_notification(
+                    lecture_id, now_iso, lecture["title"], notified=1
                 )
+            if is_confirmed_lecture(lecture, enrolled_count):
+                mark_notified(lecture_id, "confirmed", lecture["title"])
 
-                if lecture.get("status") in REGISTERED_STATUSES:
-                    mark_notified(lecture_id, "new", lecture["title"])
-                    schedule_open_notification(
-                        lecture_id, now_iso, lecture["title"], notified=1
-                    )
-                if is_confirmed_lecture(lecture, enrolled_count):
-                    mark_notified(lecture_id, "confirmed", lecture["title"])
-
-            now = datetime.now(timezone.utc)
-            for lecture in all_lectures:
-                if lecture.get("approval_status") != "APPROVED":
-                    continue
-                enrolled_count = int(lecture.get("enrolled_count") or 0)
-                if is_unconfirmed_lecture(lecture, enrolled_count, now):
-                    mark_notified(lecture["id"], "unconfirmed", lecture["title"])
-
-            print(
-                f"[초기화] 기존 강연 {len(lectures)}개를 알림 완료 상태로 저장했습니다."
-            )
-            _init_seeded = True
-            return
-        except ApiError as exc:
-            print(f"[초기화 API 오류] {exc} — {backoff}초 후 재시도합니다.")
-        except Exception as exc:
-            print(
-                f"[초기화 오류] {type(exc).__name__}: {exc} — {backoff}초 후 재시도합니다."
-            )
-
-        await asyncio.sleep(backoff)
-        backoff = min(backoff * 2, max_backoff)
+        print(f"[초기화] 기존 강연 {len(lectures)}개를 알림 완료 상태로 저장했습니다.")
+    except ApiError as exc:
+        print(f"[초기화 API 오류] {exc}")
+    except Exception as exc:
+        print(f"[초기화 오류] {type(exc).__name__}: {exc}")
 
 
 @bot.tree.command(name="릴스", description="현재 신청 가능한 강연 목록 보기")
@@ -708,8 +570,6 @@ async def on_ready() -> None:
     print(f"[봇 시작] {bot.user} 로그인 완료")
     if not poll_api.is_running():
         poll_api.start()
-    if not check_open_schedule.is_running():
-        check_open_schedule.start()
 
     try:
         if GUILD_IDS:
@@ -744,5 +604,4 @@ async def on_app_command_error(
 if __name__ == "__main__":
     if not DISCORD_TOKEN:
         raise RuntimeError("DISCORD_TOKEN이 .env에 설정되어 있지 않습니다.")
-    _acquire_single_instance_lock()
     bot.run(DISCORD_TOKEN)
