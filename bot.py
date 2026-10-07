@@ -98,6 +98,7 @@ GRADE_AWARE_NOTIFY_CHANNEL_IDS: List[int] = _parse_id_list(
 GRADE_ROLE_MAP: Dict[int, int] = {
     1: int(os.getenv("GRADE1_ROLE_ID", "1079992043805360170")),
     2: int(os.getenv("GRADE2_ROLE_ID", "1334466986419163187")),
+    3: int(os.getenv("GRADE3_ROLE_ID", "1014748516150677526")),
 }
 
 SUBMISSION_NOTIFY_CHANNEL_IDS: List[int] = _parse_id_list(
@@ -302,7 +303,7 @@ def _get_static_channel_mention(channel_id: int) -> str:
 def _grade_role_ids_for_lecture(lecture: Dict[str, Any]) -> List[int]:
     target_grades = lecture.get("target_grades") or []
     if not target_grades:
-        return [GRADE_ROLE_MAP[1], GRADE_ROLE_MAP[2]]
+        return [GRADE_ROLE_MAP[1], GRADE_ROLE_MAP[2], GRADE_ROLE_MAP[3]]
     return [GRADE_ROLE_MAP[grade] for grade in target_grades if grade in GRADE_ROLE_MAP]
 
 
