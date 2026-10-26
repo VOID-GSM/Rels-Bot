@@ -72,9 +72,7 @@ def was_notified(lecture_id: Any, notification_type: str) -> bool:
     return row is not None
 
 
-def claim_notification(
-    lecture_id: Any, notification_type: str, title: Optional[str] = None
-) -> bool:
+def claim_notification(lecture_id: Any, notification_type: str, title: Optional[str] = None) -> bool:
     now_iso = datetime.now(timezone.utc).isoformat()
     with closing(_connect()) as conn:
         with conn:
@@ -85,9 +83,7 @@ def claim_notification(
             return cur.rowcount == 1
 
 
-def mark_notified(
-    lecture_id: Any, notification_type: str, title: Optional[str] = None
-) -> bool:
+def mark_notified(lecture_id: Any, notification_type: str, title: Optional[str] = None) -> bool:
     return claim_notification(lecture_id, notification_type, title)
 
 
@@ -97,7 +93,7 @@ def schedule_open_notification(
     title: Optional[str] = None,
     notified: int = 0,
 ) -> None:
-    # notified=1이면 실제 알림 없이 처리 완료로만 기록한다(재시작 시 기존 강연용).
+
     with closing(_connect()) as conn:
         with conn:
             conn.execute(
@@ -116,3 +112,5 @@ def mark_open_notified(lecture_id: Any) -> None:
     with closing(_connect()) as conn:
         with conn:
             conn.execute(_UPDATE_OPEN_NOTIFIED_SQL, (str(lecture_id),))
+
+            
