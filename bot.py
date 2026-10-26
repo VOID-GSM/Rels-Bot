@@ -74,7 +74,7 @@ GRADE_ROLE_MAP: Dict[int, int] = {
 SUBMISSION_NOTIFY_CHANNEL_IDS: List[int] = _parse_id_list(
     os.getenv(
         "SUBMISSION_NOTIFY_CHANNEL_IDS",
-        "1542518682880839680,1490575679786455111",
+        "1542518682880839680",
     )
 )
 
@@ -373,6 +373,8 @@ async def poll_api() -> None:
         all_lectures = fetch_all_lectures()
 
         for lecture in all_lectures:
+            if lecture.get("approval_status") != "PENDING":
+                continue
             lecture_id = lecture["id"]
             if claim_notification(lecture_id, "submitted", lecture["title"]):
                 await send_to_student_council(make_submission_embed(lecture))
