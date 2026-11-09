@@ -188,6 +188,9 @@ def _normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
         "application_deadline": _first(
             raw, "applicationDeadline", "application_deadline", "deadline"
         ),
+        "application_open_at": _first(
+            raw, "applicationOpenAt", "application_open_at"
+        ),
         "total_capacity": total_capacity,
         "creator_name": _first(
             raw, "creatorName", "creator_name", "speakerName", "speaker", default="미정"
