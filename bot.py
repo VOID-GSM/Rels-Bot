@@ -150,7 +150,13 @@ def _make_progress_bar(enrolled: int, capacity: int, width: int = 10) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
-def _compute_open_at_iso(approved_at_utc: datetime) -> str:
+def _compute_open_at_iso(approved_at_utc: datetime, lecture: Dict[str, Any]) -> str:
+    # 강연자가 신청 시작 시각을 정해 뒀으면 그 시각에 열린다.
+    # 승인 전에 이미 지났으면 승인 즉시 열리므로 승인 시각을 쓴다.
+    custom_open_at = _parse_deadline(lecture.get("application_open_at"))
+    if custom_open_at is not None:
+        return max(custom_open_at, approved_at_utc).astimezone(timezone.utc).isoformat()
+
     approved_kst = approved_at_utc.astimezone(KST)
     open_kst = approved_kst.replace(
         hour=OPEN_HOUR, minute=OPEN_MINUTE, second=0, microsecond=0
@@ -403,7 +409,7 @@ async def poll_api() -> None:
                     make_new_lecture_embed(lecture),
                 )
                 approved_at = lecture.get("approved_at") or datetime.now(timezone.utc)
-                open_at_iso = _compute_open_at_iso(approved_at)
+                open_at_iso = _compute_open_at_iso(approved_at, lecture)
                 schedule_open_notification(lecture_id, open_at_iso, lecture["title"])
                 await asyncio.sleep(0.5)
 
